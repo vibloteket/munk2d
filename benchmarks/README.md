@@ -45,10 +45,21 @@ Run a size sweep using each benchmark's configured range:
 ./build/benchmarks/munkbench -b N2 -s -1
 ```
 
-Output is CSV:
+For repeatable raw samples, add untimed warm-ups and batch independent simulations
+inside each measured sample:
+
+```sh
+./build/benchmarks/munkbench -b N2 --warmup 1 --samples 5 --batch 50
+```
+
+Each batched run creates, simulates, and destroys a fresh independent world. The
+reported times are totals for the whole batch; divide by `batch` when a per-run
+value is needed. Scenario size and physics step count are unchanged.
+
+Output is CSV, with one row per raw sample:
 
 ```csv
-version,benchmark,size,init_time,run_time
+version,benchmark,size,sample,batch,init_time,run_time
 ```
 
 ## Validation summaries
