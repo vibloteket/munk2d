@@ -19,13 +19,13 @@ Box2D-optimized dissertation.
 Build:
 
 ```sh
-cmake -B build -S . -DBUILD_DEMOS=OFF -DBUILD_BENCHMARKS=ON -DCMAKE_BUILD_TYPE=RelWithDebInfo
+cmake -B build -S . -DBUILD_DEMOS=OFF -DBUILD_BENCHMARKS=ON -DCMAKE_BUILD_TYPE=Release
 cmake --build build --target munkbench
 ```
 
-`RelWithDebInfo` is recommended while bringing the port up because it avoids the
-project's default `Release` `-ffast-math` flags, which should be investigated
-separately before using MunkBench for final release-mode comparisons.
+MunkBench should use the project's normal optimized build without experimental
+floating-point flags. Compiler flags such as `-ffast-math` can be evaluated
+separately once the benchmark baseline is stable.
 
 Run the default size for every benchmark:
 
