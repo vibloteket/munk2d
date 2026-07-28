@@ -1544,7 +1544,6 @@
 				OTHER_CFLAGS = (
 					"-DDEBUG",
 					"-DCHIPMUNK_FFI",
-					"-ffast-math",
 				);
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
@@ -1562,7 +1561,6 @@
 				OTHER_CFLAGS = (
 					"-DCHIPMUNK_FFI",
 					"-DNDEBUG",
-					"-ffast-math",
 				);
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
@@ -1653,7 +1651,6 @@
 				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 8.0;
 				ONLY_ACTIVE_ARCH = NO;
-				OTHER_CFLAGS = "-ffast-math";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
@@ -1728,7 +1725,6 @@
 				ONLY_ACTIVE_ARCH = YES;
 				OTHER_CFLAGS = (
 					"-DDEBUG",
-					"-ffast-math",
 				);
 				WARNING_CFLAGS = (
 					"-Wall",
@@ -1790,7 +1786,6 @@
 				MACOSX_DEPLOYMENT_TARGET = 10.7;
 				OTHER_CFLAGS = (
 					"-DNDEBUG",
-					"-ffast-math",
 				);
 				WARNING_CFLAGS = (
 					"-Wall",
@@ -1871,7 +1866,6 @@
 				);
 				LIBRARY_SEARCH_PATHS_QUOTED_1 = "\"$(SRCROOT)/build/Release\"";
 				OTHER_CFLAGS = (
-					"-ffast-math",
 					"-DNDEBUG",
 				);
 				OTHER_LDFLAGS = (
@@ -1906,7 +1900,6 @@
 				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 8.0;
 				ONLY_ACTIVE_ARCH = NO;
-				OTHER_CFLAGS = "-ffast-math";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = appletvos;
 				SKIP_INSTALL = YES;
