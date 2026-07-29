@@ -53,6 +53,7 @@ struct Benchmark {
 	int size_start;
 	int size_end;
 	int size_inc;
+	int calibrated_batch;
 	BenchmarkInitFunc init;
 	BenchmarkUpdateFunc update;
 	BenchmarkDestroyStateFunc destroy_state;
@@ -88,7 +89,7 @@ usage(const char *argv0)
 	printf("  -s, --size        Size to run. Omit for each benchmark default; use -1 for size sweep.\n");
 	printf("  --warmup n        Untimed independent runs before sampling. Default: 0.\n");
 	printf("  --samples n       Number of raw timing samples to emit. Default: 1.\n");
-	printf("  --batch n         Independent simulations measured per sample. Default: 1.\n");
+	printf("  --batch n|auto    Independent simulations measured per sample. Default: 1.\n");
 	printf("  --summary-json    Emit validation checkpoint summaries as JSON instead of timing CSV.\n");
 	printf("  --checkpoints     Comma-separated steps for --summary-json; accepts 'final'. Runs only to the last checkpoint.\n");
 	printf("  --svg file        Write an SVG snapshot for a single benchmark. Use '-' for stdout.\n");
@@ -646,20 +647,21 @@ init_slow_explosion(int size, void **state)
 	return space;
 }
 
+// Calibrated batches target approximately 100 ms at size_start on the reference host.
 static Benchmark benchmarks[] = {
-	{"FallingSquares", 1300, 300, 10, 300, 10, init_falling_squares, default_update, NULL},
-	{"FallingCircles", 1300, 300, 10, 300, 10, init_falling_circles, default_update, NULL},
-	{"Tumbler", 1500, 1000, 50, 1000, 50, init_tumbler, tumbler_update, tumbler_destroy_state},
-	{"AddPair", 1000, 2000, 100, 2500, 100, init_add_pair, add_pair_update, NULL},
-	{"MildN2", 100, 200, 10, 200, 10, init_mild_n2, default_update, NULL},
-	{"N2", 100, 750, 25, 750, 25, init_n2, default_update, NULL},
-	{"Multifixture", 500, 100, 5, 100, 5, init_multifixture, default_update, NULL},
-	{"MostlyStaticSingleBody", 400, 200, 10, 200, 5, init_mostly_static_single_body, default_update, NULL},
-	{"MostlyStaticMultiBody", 400, 200, 10, 200, 5, init_mostly_static_multi_body, default_update, NULL},
-	{"Diagonal", 1000, 50, 2, 50, 2, init_diagonal, default_update, NULL},
-	{"MixedStaticDynamic", 400, 6000, 100, 6000, 100, init_mixed_static_dynamic, default_update, NULL},
-	{"BigMobile", 1000, 11, 1, 11, 1, init_big_mobile, default_update, NULL},
-	{"SlowExplosion", 1000, 6000, 100, 6000, 100, init_slow_explosion, default_update, NULL},
+	{"FallingSquares", 1300, 300, 10, 300, 10, 1, init_falling_squares, default_update, NULL},
+	{"FallingCircles", 1300, 300, 10, 300, 10, 2, init_falling_circles, default_update, NULL},
+	{"Tumbler", 1500, 1000, 50, 1000, 50, 1, init_tumbler, tumbler_update, tumbler_destroy_state},
+	{"AddPair", 1000, 2000, 100, 2500, 100, 4, init_add_pair, add_pair_update, NULL},
+	{"MildN2", 100, 200, 10, 200, 10, 10, init_mild_n2, default_update, NULL},
+	{"N2", 100, 750, 25, 750, 25, 60, init_n2, default_update, NULL},
+	{"Multifixture", 500, 100, 5, 100, 5, 3, init_multifixture, default_update, NULL},
+	{"MostlyStaticSingleBody", 400, 200, 10, 200, 5, 160, init_mostly_static_single_body, default_update, NULL},
+	{"MostlyStaticMultiBody", 400, 200, 10, 200, 5, 160, init_mostly_static_multi_body, default_update, NULL},
+	{"Diagonal", 1000, 50, 2, 50, 2, 10, init_diagonal, default_update, NULL},
+	{"MixedStaticDynamic", 400, 6000, 100, 6000, 100, 7, init_mixed_static_dynamic, default_update, NULL},
+	{"BigMobile", 1000, 11, 1, 11, 1, 150, init_big_mobile, default_update, NULL},
+	{"SlowExplosion", 1000, 6000, 100, 6000, 100, 25, init_slow_explosion, default_update, NULL},
 };
 
 static int benchmark_count = (int)(sizeof(benchmarks)/sizeof(benchmarks[0]));
@@ -1212,6 +1214,7 @@ main(int argc, char **argv)
 	int warmup = 0;
 	int samples = 1;
 	int batch = 1;
+	int auto_batch = 0;
 	char **selected_names = NULL;
 	int selected_name_count = 0;
 
@@ -1236,20 +1239,26 @@ main(int argc, char **argv)
 				selected_names[selected_name_count++] = argv[++i];
 			}
 		} else if(strcmp(argv[i], "--warmup") == 0 || strcmp(argv[i], "--samples") == 0 || strcmp(argv[i], "--batch") == 0){
+			const char *option = argv[i];
 			if(i + 1 >= argc){
-				fprintf(stderr, "Missing value for %s.\n", argv[i]);
+				fprintf(stderr, "Missing value for %s.\n", option);
 				free(selected_names);
 				return 2;
+			}
+			const char *value_arg = argv[++i];
+			if(strcmp(option, "--batch") == 0 && strcmp(value_arg, "auto") == 0){
+				auto_batch = 1;
+				continue;
 			}
 			char *end = NULL;
-			long value = strtol(argv[++i], &end, 10);
-			if(!argv[i][0] || (end && *end) || value < 0 || value > INT_MAX || (strcmp(argv[i - 1], "--warmup") != 0 && value == 0)){
-				fprintf(stderr, "Invalid value for %s: %s.\n", argv[i - 1], argv[i]);
+			long value = strtol(value_arg, &end, 10);
+			if(!value_arg[0] || (end && *end) || value < 0 || value > INT_MAX || (strcmp(option, "--warmup") != 0 && value == 0)){
+				fprintf(stderr, "Invalid value for %s: %s.\n", option, value_arg);
 				free(selected_names);
 				return 2;
 			}
-			if(strcmp(argv[i - 1], "--warmup") == 0) warmup = (int)value;
-			else if(strcmp(argv[i - 1], "--samples") == 0) samples = (int)value;
+			if(strcmp(option, "--warmup") == 0) warmup = (int)value;
+			else if(strcmp(option, "--samples") == 0) samples = (int)value;
 			else batch = (int)value;
 		} else if(strcmp(argv[i], "--summary-json") == 0){
 			summary_json = 1;
@@ -1289,8 +1298,13 @@ main(int argc, char **argv)
 		}
 	}
 
-	if((svg_path || summary_json) && (warmup != 0 || samples != 1 || batch != 1)){
+	if((svg_path || summary_json) && (warmup != 0 || samples != 1 || batch != 1 || auto_batch)){
 		fprintf(stderr, "--warmup, --samples, and --batch are only supported in timing CSV mode.\n");
+		free(selected_names);
+		return 2;
+	}
+	if(auto_batch && size_arg_set){
+		fprintf(stderr, "--batch auto is calibrated only for default benchmark sizes; use an explicit batch with --size.\n");
 		free(selected_names);
 		return 2;
 	}
@@ -1341,16 +1355,17 @@ main(int argc, char **argv)
 		Benchmark *benchmark = &benchmarks[i];
 		if(!name_selected(benchmark, selected_names, selected_name_count)) continue;
 
+		int benchmark_batch = auto_batch ? benchmark->calibrated_batch : batch;
 		if(!size_arg_set){
-			run_timing_samples(benchmark, benchmark->size_start, warmup, samples, batch);
+			run_timing_samples(benchmark, benchmark->size_start, warmup, samples, benchmark_batch);
 		} else if(size_arg == -1){
 			int step = (benchmark->size_end + 1 - benchmark->size_start)/11;
 			if(step <= 0) step = benchmark->size_inc;
 			for(int size = benchmark->size_start; size <= benchmark->size_end; size += step){
-				run_timing_samples(benchmark, size, warmup, samples, batch);
+				run_timing_samples(benchmark, size, warmup, samples, benchmark_batch);
 			}
 		} else {
-			run_timing_samples(benchmark, size_arg, warmup, samples, batch);
+			run_timing_samples(benchmark, size_arg, warmup, samples, benchmark_batch);
 		}
 	}
 

@@ -45,8 +45,15 @@ Run a size sweep using each benchmark's configured range:
 ./build/benchmarks/munkbench -b N2 -s -1
 ```
 
-For repeatable raw samples, add untimed warm-ups and batch independent simulations
-inside each measured sample:
+For repeatable raw samples, add untimed warm-ups and use each benchmark's
+calibrated batch count. Current batch counts target roughly 100 ms per sample at
+the configured default size on the calibration host:
+
+```sh
+./build/benchmarks/munkbench --warmup 2 --samples 10 --batch auto
+```
+
+An explicit batch count is useful for focused experiments:
 
 ```sh
 ./build/benchmarks/munkbench -b N2 --warmup 1 --samples 5 --batch 50
@@ -54,7 +61,8 @@ inside each measured sample:
 
 Each batched run creates, simulates, and destroys a fresh independent world. The
 reported times are totals for the whole batch; divide by `batch` when a per-run
-value is needed. Scenario size and physics step count are unchanged.
+value is needed. Scenario size and physics step count are unchanged. `auto` is
+calibrated for default sizes; use an explicit batch when running another size.
 
 Output is CSV, with one row per raw sample:
 
