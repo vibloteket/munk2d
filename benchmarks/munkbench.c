@@ -66,6 +66,8 @@ typedef struct TumblerState {
 typedef struct RunResult {
 	const char *benchmark;
 	int size;
+	int sample;
+	int batch;
 	double init_time;
 	double run_time;
 } RunResult;
@@ -80,10 +82,13 @@ static void
 usage(const char *argv0)
 {
 	printf("MunkBench - Munk2D benchmark suite\n\n");
-	printf("Usage: %s [-b benchmark ...] [-s size] [--summary-json] [--svg file --step n]\n\n", argv0);
+	printf("Usage: %s [-b benchmark ...] [-s size] [--warmup n --samples n --batch n] [--summary-json] [--svg file --step n]\n\n", argv0);
 	printf("Options:\n");
 	printf("  -b, --benchmarks  Run only the named benchmarks.\n");
 	printf("  -s, --size        Size to run. Omit for each benchmark default; use -1 for size sweep.\n");
+	printf("  --warmup n        Untimed independent runs before sampling. Default: 0.\n");
+	printf("  --samples n       Number of raw timing samples to emit. Default: 1.\n");
+	printf("  --batch n         Independent simulations measured per sample. Default: 1.\n");
 	printf("  --summary-json    Emit validation checkpoint summaries as JSON instead of timing CSV.\n");
 	printf("  --checkpoints     Comma-separated steps for --summary-json; accepts 'final'. Runs only to the last checkpoint.\n");
 	printf("  --svg file        Write an SVG snapshot for a single benchmark. Use '-' for stdout.\n");
@@ -1148,28 +1153,41 @@ write_svg_snapshot(Benchmark *benchmark, int size, int step, const char *path)
 }
 
 static RunResult
-run_benchmark(Benchmark *benchmark, int size)
+run_benchmark(Benchmark *benchmark, int size, int sample, int batch)
 {
-	RunResult result = {benchmark->name, size, 0.0, 0.0};
-	void *state = NULL;
+	RunResult result = {benchmark->name, size, sample, batch, 0.0, 0.0};
 
-	double init_start_time = now_seconds();
-	cpSpace *space = benchmark->init(size, &state);
-	double sim_start_time = now_seconds();
+	for(int run = 0; run < batch; run++){
+		void *state = NULL;
+		double init_start_time = now_seconds();
+		cpSpace *space = benchmark->init(size, &state);
+		double sim_start_time = now_seconds();
 
-	for(int steps = 0; steps < benchmark->steps; steps++){
-		benchmark->update(space, state, (cpFloat)(1.0/FPS));
+		for(int steps = 0; steps < benchmark->steps; steps++){
+			benchmark->update(space, state, (cpFloat)(1.0/FPS));
+		}
+
+		double end_time = now_seconds();
+		result.init_time += sim_start_time - init_start_time;
+		result.run_time += end_time - sim_start_time;
+
+		free_space_children(space);
+		cpSpaceFree(space);
+		if(benchmark->destroy_state) benchmark->destroy_state(state);
 	}
 
-	double end_time = now_seconds();
-	result.init_time = sim_start_time - init_start_time;
-	result.run_time = end_time - sim_start_time;
-
-	free_space_children(space);
-	cpSpaceFree(space);
-	if(benchmark->destroy_state) benchmark->destroy_state(state);
-
 	return result;
+}
+
+static void
+run_timing_samples(Benchmark *benchmark, int size, int warmup, int samples, int batch)
+{
+	for(int i = 0; i < warmup; i++) (void)run_benchmark(benchmark, size, 0, batch);
+	for(int sample = 1; sample <= samples; sample++){
+		RunResult result = run_benchmark(benchmark, size, sample, batch);
+		printf("%s,%s,%d,%d,%d,%.9f,%.9f\n", MUNK2D_VERSION, result.benchmark, result.size, result.sample, result.batch, result.init_time, result.run_time);
+		fflush(stdout);
+	}
 }
 
 static int
@@ -1191,6 +1209,9 @@ main(int argc, char **argv)
 	const char *checkpoints_arg = NULL;
 	const char *svg_path = NULL;
 	int svg_step = -1;
+	int warmup = 0;
+	int samples = 1;
+	int batch = 1;
 	char **selected_names = NULL;
 	int selected_name_count = 0;
 
@@ -1214,6 +1235,22 @@ main(int argc, char **argv)
 				}
 				selected_names[selected_name_count++] = argv[++i];
 			}
+		} else if(strcmp(argv[i], "--warmup") == 0 || strcmp(argv[i], "--samples") == 0 || strcmp(argv[i], "--batch") == 0){
+			if(i + 1 >= argc){
+				fprintf(stderr, "Missing value for %s.\n", argv[i]);
+				free(selected_names);
+				return 2;
+			}
+			char *end = NULL;
+			long value = strtol(argv[++i], &end, 10);
+			if(!argv[i][0] || (end && *end) || value < 0 || value > INT_MAX || (strcmp(argv[i - 1], "--warmup") != 0 && value == 0)){
+				fprintf(stderr, "Invalid value for %s: %s.\n", argv[i - 1], argv[i]);
+				free(selected_names);
+				return 2;
+			}
+			if(strcmp(argv[i - 1], "--warmup") == 0) warmup = (int)value;
+			else if(strcmp(argv[i - 1], "--samples") == 0) samples = (int)value;
+			else batch = (int)value;
 		} else if(strcmp(argv[i], "--summary-json") == 0){
 			summary_json = 1;
 		} else if(strcmp(argv[i], "--checkpoints") == 0){
@@ -1250,6 +1287,12 @@ main(int argc, char **argv)
 			free(selected_names);
 			return 2;
 		}
+	}
+
+	if((svg_path || summary_json) && (warmup != 0 || samples != 1 || batch != 1)){
+		fprintf(stderr, "--warmup, --samples, and --batch are only supported in timing CSV mode.\n");
+		free(selected_names);
+		return 2;
 	}
 
 	if(svg_path){
@@ -1293,26 +1336,22 @@ main(int argc, char **argv)
 		return 0;
 	}
 
-	printf("version,benchmark,size,init_time,run_time\n");
+	printf("version,benchmark,size,sample,batch,init_time,run_time\n");
 	for(int i = 0; i < benchmark_count; i++){
 		Benchmark *benchmark = &benchmarks[i];
 		if(!name_selected(benchmark, selected_names, selected_name_count)) continue;
 
 		if(!size_arg_set){
-			RunResult result = run_benchmark(benchmark, benchmark->size_start);
-			printf("%s,%s,%d,%.9f,%.9f\n", MUNK2D_VERSION, result.benchmark, result.size, result.init_time, result.run_time);
+			run_timing_samples(benchmark, benchmark->size_start, warmup, samples, batch);
 		} else if(size_arg == -1){
 			int step = (benchmark->size_end + 1 - benchmark->size_start)/11;
 			if(step <= 0) step = benchmark->size_inc;
 			for(int size = benchmark->size_start; size <= benchmark->size_end; size += step){
-				RunResult result = run_benchmark(benchmark, size);
-				printf("%s,%s,%d,%.9f,%.9f\n", MUNK2D_VERSION, result.benchmark, result.size, result.init_time, result.run_time);
+				run_timing_samples(benchmark, size, warmup, samples, batch);
 			}
 		} else {
-			RunResult result = run_benchmark(benchmark, size_arg);
-			printf("%s,%s,%d,%.9f,%.9f\n", MUNK2D_VERSION, result.benchmark, result.size, result.init_time, result.run_time);
+			run_timing_samples(benchmark, size_arg, warmup, samples, batch);
 		}
-		fflush(stdout);
 	}
 
 	free(selected_names);
