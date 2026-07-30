@@ -96,3 +96,26 @@ A selected benchmark can be rendered to SVG for visual comparison:
 ```
 
 Use `--svg -` to write the SVG to stdout.
+
+## Recording historical results
+
+The recording tool builds a clean revision, runs tests and behavior validation,
+collects raw timing samples, and appends one immutable JSON file to the orphan
+`benchmark-data` branch:
+
+```sh
+bun benchmarks/tools/record-results.ts \
+  --revision master \
+  --environment reference-server-v1
+```
+
+Defaults are two warm-ups, ten samples, calibrated automatic batches, protocol
+`munkbench-v1`, and remote branch `origin/benchmark-data`. The working tree must
+be clean. Use `--dry-run --output run.json` to validate and inspect a record
+without committing or pushing it.
+
+Recorded paths are organized by environment, protocol, year, timestamp, and
+commit. Changing the machine, compiler baseline, benchmark workload, or timing
+semantics should start a new environment or protocol series instead of silently
+continuing an incompatible graph. The versioned format is documented by
+[`results-schema-v1.json`](results-schema-v1.json).
