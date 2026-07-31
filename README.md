@@ -102,6 +102,11 @@ ctest --test-dir build --output-on-failure
 The current CI pipeline uses this path and runs the tests on Linux, Windows and
 macOS while still building the demos to catch compile issues there too.
 
+CMake enables supported interprocedural/link-time optimization for Release,
+RelWithDebInfo, and MinSizeRel builds. Disable it for controlled comparisons or
+incompatible toolchains with `-DMUNK2D_ENABLE_LTO=OFF`. Debug builds do not use
+LTO.
+
 Windows: Visual Studio projects are included in the msvc/ directory. While I try
 to make sure the MSVC 10 project is up-to-date, I don't have MSVC 9 to keep that
 project updated regularly. It may not work. I'd appreciate a hand fixing it if
