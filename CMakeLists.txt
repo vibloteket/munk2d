@@ -72,12 +72,6 @@ if(NOT MSVC)
   set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -Wall") # extend debug-profile with -Wall
 endif()
 
-add_subdirectory(src)
-
-if(BUILD_TESTING)
-  add_subdirectory(tests)
-endif()
-
 option(MUNK2D_ENABLE_LTO "Enable supported interprocedural/link-time optimization in non-Debug builds" ON)
 if(MUNK2D_ENABLE_LTO)
   include(CheckIPOSupported)
@@ -89,6 +83,12 @@ if(MUNK2D_ENABLE_LTO)
   else()
     message(WARNING "MUNK2D_ENABLE_LTO requested, but IPO/LTO is unavailable: ${MUNK2D_IPO_ERROR}")
   endif()
+endif()
+
+add_subdirectory(src)
+
+if(BUILD_TESTING)
+  add_subdirectory(tests)
 endif()
 
 option(BUILD_BENCHMARKS "Build standalone benchmark executables" OFF)
