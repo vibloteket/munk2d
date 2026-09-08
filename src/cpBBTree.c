@@ -606,7 +606,23 @@ LeafUpdate(Node *leaf, cpBBTree *tree)
 	cpBB bb = tree->spatialIndex.bbfunc(leaf->obj);
 	
 	if(!cpBBContainsBB(leaf->bb, bb)){
-		leaf->bb = GetBB(tree, leaf->obj);
+		Node *staticRoot = GetRootIfTree(tree->spatialIndex.staticIndex);
+		if(leaf->PAIRS == NULL && tree->velocityFunc && staticRoot == NULL){
+			cpVect velocity = tree->velocityFunc(leaf->obj);
+			cpFloat width = bb.r - bb.l;
+			cpFloat height = bb.t - bb.b;
+			if(cpvlengthsq(velocity) >= 64.0f*64.0f && width >= 0.5f && height >= 0.5f){
+				cpFloat coef = 0.3f;
+				cpFloat x = width*coef;
+				cpFloat y = height*coef;
+				cpVect v = cpvmult(velocity, coef);
+				leaf->bb = cpBBNew(bb.l + cpfmin(-x, v.x), bb.b + cpfmin(-y, v.y), bb.r + cpfmax(x, v.x), bb.t + cpfmax(y, v.y));
+			} else {
+				leaf->bb = GetBB(tree, leaf->obj);
+			}
+		} else {
+			leaf->bb = GetBB(tree, leaf->obj);
+		}
 		
 		root = SubtreeRemove(root, leaf, tree);
 		tree->root = SubtreeInsert(root, leaf, tree);
