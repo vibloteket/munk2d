@@ -374,8 +374,13 @@ SubtreeInsert(Node *subtree, Node *leaf, cpBBTree *tree)
 		// Walk down the tree iteratively to find the leaf to pair with.
 		Node *node = subtree;
 		while(!NodeIsLeaf(node)){
-			cpFloat cost_a = cpBBArea(node->B->bb) + cpBBMergedArea(node->A->bb, leaf->bb);
-			cpFloat cost_b = cpBBArea(node->A->bb) + cpBBMergedArea(node->B->bb, leaf->bb);
+			cpBB a = node->A->bb;
+			cpBB b = node->B->bb;
+			cpBB leafBB = leaf->bb;
+			cpFloat cost_a = (b.r - b.l)*(b.t - b.b) +
+				(cpfmax(a.r, leafBB.r) - cpfmin(a.l, leafBB.l))*(cpfmax(a.t, leafBB.t) - cpfmin(a.b, leafBB.b));
+			cpFloat cost_b = (a.r - a.l)*(a.t - a.b) +
+				(cpfmax(b.r, leafBB.r) - cpfmin(b.l, leafBB.l))*(cpfmax(b.t, leafBB.t) - cpfmin(b.b, leafBB.b));
 			
 			if(cost_a == cost_b){
 				cost_a = cpBBProximity(node->A->bb, leaf->bb);
