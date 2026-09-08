@@ -117,10 +117,8 @@ struct Pair {
 //MARK: Misc Functions
 
 static inline cpBB
-GetBB(cpBBTree *tree, void *obj)
+GetBBForBounds(cpBBTree *tree, void *obj, cpBB bb)
 {
-	cpBB bb = tree->spatialIndex.bbfunc(obj);
-	
 	cpBBTreeVelocityFunc velocityFunc = tree->velocityFunc;
 	if(velocityFunc){
 		cpFloat coef = 0.1f;
@@ -132,6 +130,12 @@ GetBB(cpBBTree *tree, void *obj)
 	} else {
 		return bb;
 	}
+}
+
+static inline cpBB
+GetBB(cpBBTree *tree, void *obj)
+{
+	return GetBBForBounds(tree, obj, tree->spatialIndex.bbfunc(obj));
 }
 
 static inline cpBBTree *
@@ -618,10 +622,10 @@ LeafUpdate(Node *leaf, cpBBTree *tree)
 				cpVect v = cpvmult(velocity, coef);
 				leaf->bb = cpBBNew(bb.l + cpfmin(-x, v.x), bb.b + cpfmin(-y, v.y), bb.r + cpfmax(x, v.x), bb.t + cpfmax(y, v.y));
 			} else {
-				leaf->bb = GetBB(tree, leaf->obj);
+				leaf->bb = GetBBForBounds(tree, leaf->obj, bb);
 			}
 		} else {
-			leaf->bb = GetBB(tree, leaf->obj);
+			leaf->bb = GetBBForBounds(tree, leaf->obj, bb);
 		}
 		
 		root = SubtreeRemove(root, leaf, tree);
