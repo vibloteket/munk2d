@@ -254,29 +254,24 @@ cpSpaceCollideShapes(cpShape *a, cpShape *b, cpCollisionID id, cpSpace *space)
 	
 	const cpCollisionHandler *handlers [] = { arb->handlerAB, arb->handlerBA, arb->handlerA, arb->handlerB, &space->globalHandler};
 
-	// Call the begin function first if it's the first step
+	// Call only handlers that differ from the default no-op callbacks.
 	if(arb->state == CP_ARBITER_STATE_FIRST_COLLISION) {
 		for (int i=0; i<5; i++) {
-			if (i%2 == 0) {
-				handlers[i]->beginFunc(arb, space, handlers[i]->userData);	
-			}
-			else {
-				arb->swapped = !arb->swapped;
-				handlers[i]->beginFunc(arb, space, handlers[i]->userData);	
-				arb->swapped = !arb->swapped;
+			cpCollisionBeginFunc begin = handlers[i]->beginFunc;
+			if(begin != cpCollisionHandlerDoNothing.beginFunc){
+				if(i%2 != 0) arb->swapped = !arb->swapped;
+				begin(arb, space, handlers[i]->userData);
+				if(i%2 != 0) arb->swapped = !arb->swapped;
 			}
 		}
 	}
 
-	// Call the preSolve function
 	for (int i=0; i<5; i++){
-		if (i%2 == 0) {
-			handlers[i]->preSolveFunc(arb, space, handlers[i]->userData);	
-		}
-		else {
-			arb->swapped = !arb->swapped;
-			handlers[i]->preSolveFunc(arb, space, handlers[i]->userData);	
-			arb->swapped = !arb->swapped;
+		cpCollisionPreSolveFunc preSolve = handlers[i]->preSolveFunc;
+		if(preSolve != cpCollisionHandlerDoNothing.preSolveFunc){
+			if(i%2 != 0) arb->swapped = !arb->swapped;
+			preSolve(arb, space, handlers[i]->userData);
+			if(i%2 != 0) arb->swapped = !arb->swapped;
 		}
 	}
 	if(
@@ -466,14 +461,12 @@ cpSpaceStep(cpSpace *space, cpFloat dt)
 		for(int i=0; i<arbiters->num; i++){
 			cpArbiter *arb = (cpArbiter *) arbiters->arr[i];
 			const cpCollisionHandler *handlers [] = { arb->handlerAB, arb->handlerBA, arb->handlerA, arb->handlerB, &space->globalHandler};
-			for (int i=0; i<5; i++){
-				if (i%2 == 0) {
-					handlers[i]->postSolveFunc(arb, space, handlers[i]->userData);	
-				}
-				else {
-					arb->swapped = !arb->swapped;
-					handlers[i]->postSolveFunc(arb, space, handlers[i]->userData);	
-					arb->swapped = !arb->swapped;
+			for (int j=0; j<5; j++){
+				cpCollisionPostSolveFunc postSolve = handlers[j]->postSolveFunc;
+				if(postSolve != cpCollisionHandlerDoNothing.postSolveFunc){
+					if(j%2 != 0) arb->swapped = !arb->swapped;
+					postSolve(arb, space, handlers[j]->userData);
+					if(j%2 != 0) arb->swapped = !arb->swapped;
 				}
 			}
 		}
