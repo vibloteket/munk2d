@@ -176,6 +176,81 @@ jobs:
           name: munkbench-smoke-gallery
           path: ${{ github.workspace }}/munkbench-smoke-svg/
 
+      - name: Build baseline MunkBench
+        if: github.event_name == 'pull_request'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags --depth=1 origin "${{ github.event.pull_request.base.sha }}"
+          git worktree add --detach "${{ runner.temp }}/munkbench-base" FETCH_HEAD
+          cmake -B "${{ runner.temp }}/munkbench-base-build" \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DBUILD_DEMOS=OFF -DBUILD_TESTING=OFF -DBUILD_BENCHMARKS=ON \
+            -S "${{ runner.temp }}/munkbench-base"
+          cmake --build "${{ runner.temp }}/munkbench-base-build" --target munkbench --parallel
+
+      - name: Compare MunkBench snapshots with PR base
+        if: github.event_name == 'pull_request'
+        id: gallery_diff
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE_DIR="${{ runner.temp }}/munkbench-base-svg"
+          DIFF_DIR="${{ github.workspace }}/munkbench-email-gallery"
+          MUNKBENCH="${{ runner.temp }}/munkbench-base-build/benchmarks/munkbench"
+          mkdir -p "$BASE_DIR"
+          declare -A SIZES=(
+            [FallingSquares]=10 [FallingCircles]=10 [Tumbler]=50 [AddPair]=100
+            [MildN2]=10 [N2]=25 [Multifixture]=5 [MostlyStaticSingleBody]=10
+            [MostlyStaticMultiBody]=10 [Diagonal]=2 [MixedStaticDynamic]=1
+            [BigMobile]=1 [SlowExplosion]=100
+          )
+          declare -A STEPS=(
+            [FallingSquares]=50 [FallingCircles]=50 [Tumbler]=50 [AddPair]=50
+            [MildN2]=1 [N2]=50 [Multifixture]=1 [MostlyStaticSingleBody]=25
+            [MostlyStaticMultiBody]=50 [Diagonal]=50 [MixedStaticDynamic]=50
+            [BigMobile]=50 [SlowExplosion]=50
+          )
+          BENCHMARKS=(FallingSquares FallingCircles Tumbler AddPair MildN2 N2 Multifixture \
+            MostlyStaticSingleBody MostlyStaticMultiBody Diagonal MixedStaticDynamic \
+            BigMobile SlowExplosion)
+          for bench in "${BENCHMARKS[@]}"; do
+            "$MUNKBENCH" -b "$bench" -s "${SIZES[$bench]}" \
+              --svg "$BASE_DIR/${bench}_smoke.svg" --step "${STEPS[$bench]}"
+          done
+          sudo apt-get update
+          sudo apt-get install -y librsvg2-bin
+          ./scripts/compare-munkbench-gallery \
+            "${{ github.workspace }}/munkbench-smoke-svg" "$BASE_DIR" "$DIFF_DIR"
+          if [[ -s "$DIFF_DIR/changed.txt" ]]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Email changed MunkBench snapshots
+        if: github.event_name == 'pull_request' && steps.gallery_diff.outputs.changed == 'true'
+        continue-on-error: true
+        env:
+          SMTP_SERVER: ${{ vars.GALLERY_SMTP_SERVER }}
+          SMTP_PORT: ${{ vars.GALLERY_SMTP_PORT }}
+          SMTP_USERNAME: ${{ vars.GALLERY_SMTP_USERNAME }}
+          SMTP_PASSWORD: ${{ secrets.GALLERY_EMAIL_PASSWORD }}
+          EMAIL_FROM: ${{ vars.GALLERY_EMAIL_FROM }}
+          EMAIL_TO: ${{ vars.GALLERY_EMAIL_TO }}
+          GALLERY_DIR: ${{ github.workspace }}/munkbench-email-gallery
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          ACTIONS_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          COMMIT_SHA: ${{ github.event.pull_request.head.sha }}
+        run: ./scripts/send-munkbench-gallery-email
+
+      - uses: actions/upload-artifact@v4
+        if: github.event_name == 'pull_request' && steps.gallery_diff.outputs.changed == 'true'
+        with:
+          name: munkbench-changed-images
+          path: ${{ github.workspace }}/munkbench-email-gallery/
+
       - name: MunkBench full SVG gallery (all benchmarks, 3 checkpoints each)
         if: github.event_name == 'push'
         shell: bash
@@ -365,6 +440,6 @@ jobs:
 
       - name: Test
         working-directory: ${{ steps.strings.outputs.build-output-dir }}
-      # Execute tests defined by the CMake configuration. Note that --build-config is needed because the default Windows generator is a multi-config generator (Visual Studio generator).
-      # See https://cmake.org/cmake/help/latest/manual/ctest.1.html for more detail
+        # Execute tests defined by the CMake configuration. Note that --build-config is needed because the default Windows generator is a multi-config generator (Visual Studio generator).
+        # See https://cmake.org/cmake/help/latest/manual/ctest.1.html for more detail
         run: ctest --build-config ${{ matrix.build_type }} --output-on-failure
