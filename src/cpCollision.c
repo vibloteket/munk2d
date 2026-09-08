@@ -711,7 +711,15 @@ cpCollide(const cpShape *a, const cpShape *b, cpCollisionID id, struct cpContact
 		info.b = a;
 	}
 	
-	CollisionFuncs[info.a->klass->type + info.b->klass->type*CP_NUM_SHAPES](info.a, info.b, &info);
+	switch(info.a->klass->type + info.b->klass->type*CP_NUM_SHAPES){
+		case 0: CircleToCircle((const cpCircleShape *)info.a, (const cpCircleShape *)info.b, &info); break;
+		case 3: CircleToSegment((const cpCircleShape *)info.a, (const cpSegmentShape *)info.b, &info); break;
+		case 4: SegmentToSegment((const cpSegmentShape *)info.a, (const cpSegmentShape *)info.b, &info); break;
+		case 6: CircleToPoly((const cpCircleShape *)info.a, (const cpPolyShape *)info.b, &info); break;
+		case 7: SegmentToPoly((const cpSegmentShape *)info.a, (const cpPolyShape *)info.b, &info); break;
+		case 8: PolyToPoly((const cpPolyShape *)info.a, (const cpPolyShape *)info.b, &info); break;
+		default: CollisionError(info.a, info.b, &info); break;
+	}
 	
 //	if(0){
 //		for(int i=0; i<info.count; i++){
