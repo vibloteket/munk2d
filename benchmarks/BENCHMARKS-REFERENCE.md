@@ -76,6 +76,23 @@ Many bodies and joints in a very wide structure.
 
 A casual scene with both static and dynamic bodies, polygons and circles, some movement and collisions.
 
+### 14. Frictional Pyramid
+
+A pyramid of boxes settling on a ground segment with friction `0.8`. Covers the
+normal frictional solver path and a workload common in Pymunk applications.
+
+### 15. Collision Callbacks
+
+Mixed circles and boxes exercising type-specific and wildcard collision handlers.
+The callbacks count begin, pre-solve, post-solve, separate, and wildcard calls;
+pre-solve periodically overrides arbiter friction.
+
+### 16. Sleep/Wake
+
+A stack of frictional boxes with sleeping enabled. Bodies settle and sleep before
+one body receives an impulse, wakes connected bodies, and settles again. Covers
+contact persistence and movement between sleeping/static and dynamic indexes.
+
 ---
 
 ## Performance Context
@@ -104,6 +121,9 @@ A casual scene with both static and dynamic bodies, polygons and circles, some m
 | Diagonal               | Normal            | Broad-phase stress       |
 | Big Mobile             | Normal            | Joints + large structure |
 | Mixed Static/Dynamic   | Normal            | Mixed general scene      |
+| Frictional Pyramid     | Normal            | Non-zero friction solver |
+| Collision Callbacks    | Normal            | Handler and wildcard callbacks |
+| Sleep/Wake             | Normal            | Sleeping, activation, contact persistence |
 
 ## CCD Benchmarks
 
