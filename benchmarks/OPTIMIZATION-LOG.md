@@ -16,7 +16,7 @@ baseline/candidate measurements. Check this file before repeating an experiment.
 | Solver | Dedicated scalar frictionless path | Zero-friction contact workloads about -2% to -10%; friction 0.7 control neutral | [#13](https://github.com/vibloteket/munk2d/pull/13) |
 | GJK | Start polygon support scan at vertex 1 | Polygon-heavy workloads about -0.3% to -0.9% | [#16](https://github.com/vibloteket/munk2d/pull/16) |
 | GJK/EPA | Dispatch support points by shape pair | Polygon/contact workloads about -1% to -2% | [#17](https://github.com/vibloteket/munk2d/pull/17) |
-| GJK/EPA | Pair-specific cached support lookup | Relevant GJK workloads about -0.4% to -1.0%; pending | [#20](https://github.com/vibloteket/munk2d/pull/20) |
+| GJK/EPA | Pair-specific cached support lookup | Relevant GJK workloads about -0.4% to -1.0% | [#20](https://github.com/vibloteket/munk2d/pull/20) |
 
 ## Rejected: BBTree
 
@@ -52,6 +52,8 @@ baseline/candidate measurements. Check this file before repeating an experiment.
 | Unit-damping `pow` fast path | Too small/mixed. |
 | Skip default `separate` callbacks | About 1% at one SleepWake size; gain vanished when scaled. |
 | Explicit impulse helper expansion | Helped callback/sleep cases, neutral or negative elsewhere. |
+| Separate static-body solver selected per arbiter | Callback/SleepWake improved about 7.5%, but dynamic-only contact workloads regressed 1–2%. |
+| Cache body solver state locally per arbiter | Realistic friction/callback/sleep scenarios regressed 2–4%. |
 
 ## Rejected: collision, callbacks, and shape updates
 
@@ -76,6 +78,8 @@ baseline/candidate measurements. Check this file before repeating an experiment.
 | Scalar rewrite of `ClosestDist` | Neutral/mixed. |
 | Two-vertices-per-iteration polygon support scan | Callback/sleep improved, but FallingSquares +1.1% and Tumbler +2.0%. |
 | Three-point EPA loop removal preserving comparison order | Exact, but no measurable gain after compilation. |
+| Two-at-a-time polygon support scan | Callback/sleep improved, FallingSquares/Tumbler regressed 1–2%. |
+| Pair-kind switch replacing support function pointer | Broad regressions around 0.2–2%; indirect call was better predicted. |
 
 ## Benchmark and CI changes
 
@@ -88,3 +92,4 @@ baseline/candidate measurements. Check this file before repeating an experiment.
 - `cpArbiterApplyImpulse` remains the largest contact-heavy hotspot (roughly 36–59% self time).
 - GJK/EPA calls are usually shallow; support-point work matters more than recursion depth. FrictionalPyramid EPA exits at iteration 1 about 99.5% of the time; FallingSquares exits at iteration 1–2 about 97% of the time; CollisionCallbacks commonly reaches iteration 2–3.
 - Realistic contact workloads show low L1D miss rates (roughly 0.4–1.1%); simple struct reordering has not helped.
+- Focused `cpArbiter` hot-field packing kept the structure at 184 bytes but was neutral/mixed. Focused `cpContact` packing was also neutral.
