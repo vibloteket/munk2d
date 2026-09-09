@@ -246,6 +246,7 @@ jobs:
               printf '<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="300"><rect width="100%%" height="100%%" fill="white"/><text x="40" y="150" font-size="32">%s is new in this PR</text></svg>\n' "$bench" > "$BASE_DIR/${bench}_smoke.svg"
             fi
           done
+          sudo find /etc/apt/sources.list.d -type f ! -name 'ubuntu.sources' -delete
           sudo apt-get update
           sudo apt-get install -y librsvg2-bin
           ./scripts/compare-munkbench-gallery \
@@ -450,9 +451,11 @@ jobs:
 
       - name: Install dependencies on Ubuntu
         if: runner.os == 'Linux'
-        run: >
-          sudo apt-get update && sudo apt-get install -y libgl1-mesa-dev
-          xorg-dev libblocksruntime-dev
+        shell: bash
+        run: |
+          sudo find /etc/apt/sources.list.d -type f ! -name 'ubuntu.sources' -delete
+          sudo apt-get update
+          sudo apt-get install -y libgl1-mesa-dev xorg-dev libblocksruntime-dev
 
       - name: CMake Version
         run: cmake --version
