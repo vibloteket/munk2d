@@ -16,6 +16,7 @@ baseline/candidate measurements. Check this file before repeating an experiment.
 | Solver | Dedicated scalar frictionless path | Zero-friction contact workloads about -2% to -10%; friction 0.7 control neutral | [#13](https://github.com/vibloteket/munk2d/pull/13) |
 | GJK | Start polygon support scan at vertex 1 | Polygon-heavy workloads about -0.3% to -0.9% | [#16](https://github.com/vibloteket/munk2d/pull/16) |
 | GJK/EPA | Dispatch support points by shape pair | Polygon/contact workloads about -1% to -2% | [#17](https://github.com/vibloteket/munk2d/pull/17) |
+| GJK/EPA | Pair-specific cached support lookup | Relevant GJK workloads about -0.4% to -1.0%; pending | [#20](https://github.com/vibloteket/munk2d/pull/20) |
 
 ## Rejected: BBTree
 
@@ -73,6 +74,8 @@ baseline/candidate measurements. Check this file before repeating an experiment.
 | Replace polygon edge modulo with branches | Some realistic scenes improved, FallingSquares/Tumbler regressed 0.5–0.7% on x86. |
 | Pointer iteration in polygon support scan | Neutral. |
 | Scalar rewrite of `ClosestDist` | Neutral/mixed. |
+| Two-vertices-per-iteration polygon support scan | Callback/sleep improved, but FallingSquares +1.1% and Tumbler +2.0%. |
+| Three-point EPA loop removal preserving comparison order | Exact, but no measurable gain after compilation. |
 
 ## Benchmark and CI changes
 
@@ -83,5 +86,5 @@ baseline/candidate measurements. Check this file before repeating an experiment.
 ## Current profile notes
 
 - `cpArbiterApplyImpulse` remains the largest contact-heavy hotspot (roughly 36–59% self time).
-- GJK/EPA calls are usually shallow; support-point work matters more than recursion depth.
+- GJK/EPA calls are usually shallow; support-point work matters more than recursion depth. FrictionalPyramid EPA exits at iteration 1 about 99.5% of the time; FallingSquares exits at iteration 1–2 about 97% of the time; CollisionCallbacks commonly reaches iteration 2–3.
 - Realistic contact workloads show low L1D miss rates (roughly 0.4–1.1%); simple struct reordering has not helped.
