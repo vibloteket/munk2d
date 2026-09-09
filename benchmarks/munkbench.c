@@ -22,6 +22,7 @@
 
 #include "chipmunk/chipmunk.h"
 
+#include <inttypes.h>
 #include <limits.h>
 #include <math.h>
 #include <stdint.h>
@@ -45,6 +46,7 @@ typedef struct Benchmark Benchmark;
 typedef cpSpace *(*BenchmarkInitFunc)(int size, void **state);
 typedef void (*BenchmarkUpdateFunc)(cpSpace *space, void *state, cpFloat dt);
 typedef void (*BenchmarkDestroyStateFunc)(void *state);
+typedef void (*BenchmarkPrintMetricsFunc)(void *state);
 
 struct Benchmark {
 	const char *name;
@@ -57,12 +59,27 @@ struct Benchmark {
 	BenchmarkInitFunc init;
 	BenchmarkUpdateFunc update;
 	BenchmarkDestroyStateFunc destroy_state;
+	BenchmarkPrintMetricsFunc print_metrics;
 };
 
 typedef struct TumblerState {
 	int count;
 	int target_count;
 } TumblerState;
+
+typedef struct CallbackState {
+	uint64_t begin_count;
+	uint64_t pre_solve_count;
+	uint64_t post_solve_count;
+	uint64_t separate_count;
+	uint64_t wildcard_count;
+} CallbackState;
+
+typedef struct SleepWakeState {
+	cpBody *wake_body;
+	int step;
+	int wake_step;
+} SleepWakeState;
 
 typedef struct RunResult {
 	const char *benchmark;
@@ -647,21 +664,159 @@ init_slow_explosion(int size, void **state)
 	return space;
 }
 
+static cpSpace *
+init_frictional_pyramid(int size, void **state)
+{
+	(void)state;
+	cpSpace *space = new_space(0.0, -100.0);
+	cpShape *ground = add_static_segment(space, cpv(-50.0, 0.0), cpv(50.0, 0.0), 0.5);
+	cpShapeSetFriction(ground, 0.8);
+
+	for(int row = 0; row < size; row++){
+		for(int col = 0; col < size - row; col++){
+			cpBody *body = add_dynamic_body(space, cpv((cpFloat)col + 0.5*(cpFloat)row - 0.5*(cpFloat)size, 0.55 + 1.05*(cpFloat)row));
+			cpShape *shape = add_box_shape(space, body, 0.9, 0.9, 1.0);
+			cpShapeSetFriction(shape, 0.8);
+		}
+	}
+	return space;
+}
+
+static void callback_begin(cpArbiter *arb, cpSpace *space, cpDataPointer data)
+{
+	(void)arb; (void)space;
+	((CallbackState *)data)->begin_count++;
+}
+
+static void callback_pre_solve(cpArbiter *arb, cpSpace *space, cpDataPointer data)
+{
+	(void)space;
+	CallbackState *callback = (CallbackState *)data;
+	callback->pre_solve_count++;
+	cpArbiterSetProcessCollision(arb, (callback->pre_solve_count % 11) != 0);
+	if((callback->pre_solve_count % 3) == 0) cpArbiterSetFriction(arb, 0.35);
+}
+
+static void callback_post_solve(cpArbiter *arb, cpSpace *space, cpDataPointer data)
+{
+	(void)arb; (void)space;
+	((CallbackState *)data)->post_solve_count++;
+}
+
+static void callback_separate(cpArbiter *arb, cpSpace *space, cpDataPointer data)
+{
+	(void)arb; (void)space;
+	((CallbackState *)data)->separate_count++;
+}
+
+static void callback_wildcard(cpArbiter *arb, cpSpace *space, cpDataPointer data)
+{
+	(void)arb; (void)space;
+	((CallbackState *)data)->wildcard_count++;
+}
+
+static void callback_destroy_state(void *state)
+{
+	free(state);
+}
+
+static void callback_print_metrics(void *state)
+{
+	CallbackState *callback = (CallbackState *)state;
+	printf(",\"benchmark_metrics\":{\"begin_count\":%" PRIu64 ",\"pre_solve_count\":%" PRIu64
+		",\"post_solve_count\":%" PRIu64 ",\"separate_count\":%" PRIu64
+		",\"wildcard_count\":%" PRIu64 "}",
+		callback->begin_count, callback->pre_solve_count, callback->post_solve_count,
+		callback->separate_count, callback->wildcard_count);
+}
+
+static cpSpace *
+init_collision_callbacks(int size, void **state)
+{
+	cpSpace *space = new_space(0.0, -30.0);
+	CallbackState *callback = (CallbackState *)calloc(1, sizeof(CallbackState));
+	if(!callback){fprintf(stderr, "Out of memory.\n"); exit(1);}
+	*state = callback;
+
+	cpShape *ground = add_static_segment(space, cpv(-50.0, 0.0), cpv(50.0, 0.0), 0.5);
+	cpShapeSetFriction(ground, 0.6);
+	cpShapeSetElasticity(ground, 0.6);
+	cpShapeSetCollisionType(ground, 2);
+	for(int i = 0; i < size; i++){
+		cpBody *body = add_dynamic_body(space, cpv((cpFloat)(i % 12) - 6.0, 2.0 + 1.2*(cpFloat)(i/12)));
+		cpShape *shape = (i % 2 == 0 ? add_circle_shape(space, body, 0.45, cpvzero, 1.0) : add_box_shape(space, body, 0.8, 0.8, 1.0));
+		cpShapeSetFriction(shape, 0.6);
+		cpShapeSetElasticity(shape, 0.6);
+		cpShapeSetCollisionType(shape, (i % 3 == 0 ? 1 : 3));
+	}
+
+	cpCollisionHandler *specific = cpSpaceAddCollisionHandler(space, 1, 2);
+	specific->beginFunc = callback_begin;
+	specific->preSolveFunc = callback_pre_solve;
+	specific->postSolveFunc = callback_post_solve;
+	specific->separateFunc = callback_separate;
+	specific->userData = callback;
+	cpCollisionHandler *wildcard = cpSpaceAddWildcardHandler(space, 3);
+	wildcard->postSolveFunc = callback_wildcard;
+	wildcard->userData = callback;
+	return space;
+}
+
+static void sleep_wake_update(cpSpace *space, void *state, cpFloat dt)
+{
+	SleepWakeState *sleep = (SleepWakeState *)state;
+	cpSpaceStep(space, dt);
+	sleep->step++;
+	if(sleep->step == sleep->wake_step){
+		cpBodyApplyImpulseAtLocalPoint(sleep->wake_body, cpv(80.0, 40.0), cpvzero);
+	}
+}
+
+static void sleep_wake_destroy_state(void *state)
+{
+	free(state);
+}
+
+static cpSpace *
+init_sleep_wake(int size, void **state)
+{
+	cpSpace *space = new_space(0.0, -100.0);
+	cpSpaceSetSleepTimeThreshold(space, 0.25);
+	cpSpaceSetIdleSpeedThreshold(space, 0.5);
+	cpShape *ground = add_static_segment(space, cpv(-50.0, 0.0), cpv(50.0, 0.0), 0.5);
+	cpShapeSetFriction(ground, 0.8);
+
+	SleepWakeState *sleep = (SleepWakeState *)calloc(1, sizeof(SleepWakeState));
+	if(!sleep){fprintf(stderr, "Out of memory.\n"); exit(1);}
+	sleep->wake_step = 180;
+	*state = sleep;
+	for(int i = 0; i < size; i++){
+		cpBody *body = add_dynamic_body(space, cpv((cpFloat)(i % 10) - 5.0, 0.55 + 1.05*(cpFloat)(i/10)));
+		cpShape *shape = add_box_shape(space, body, 0.9, 0.9, 1.0);
+		cpShapeSetFriction(shape, 0.8);
+		if(i == 0) sleep->wake_body = body;
+	}
+	return space;
+}
+
 // Calibrated batches target approximately 100 ms at size_start on the reference host.
 static Benchmark benchmarks[] = {
-	{"FallingSquares", 1300, 300, 10, 300, 10, 1, init_falling_squares, default_update, NULL},
-	{"FallingCircles", 1300, 300, 10, 300, 10, 2, init_falling_circles, default_update, NULL},
-	{"Tumbler", 1500, 1000, 50, 1000, 50, 1, init_tumbler, tumbler_update, tumbler_destroy_state},
-	{"AddPair", 1000, 2000, 100, 2500, 100, 4, init_add_pair, add_pair_update, NULL},
-	{"MildN2", 100, 200, 10, 200, 10, 10, init_mild_n2, default_update, NULL},
-	{"N2", 100, 750, 25, 750, 25, 60, init_n2, default_update, NULL},
-	{"Multifixture", 500, 100, 5, 100, 5, 3, init_multifixture, default_update, NULL},
-	{"MostlyStaticSingleBody", 400, 200, 10, 200, 5, 160, init_mostly_static_single_body, default_update, NULL},
-	{"MostlyStaticMultiBody", 400, 200, 10, 200, 5, 160, init_mostly_static_multi_body, default_update, NULL},
-	{"Diagonal", 1000, 50, 2, 50, 2, 10, init_diagonal, default_update, NULL},
-	{"MixedStaticDynamic", 400, 6000, 100, 6000, 100, 7, init_mixed_static_dynamic, default_update, NULL},
-	{"BigMobile", 1000, 11, 1, 11, 1, 150, init_big_mobile, default_update, NULL},
-	{"SlowExplosion", 1000, 6000, 100, 6000, 100, 25, init_slow_explosion, default_update, NULL},
+	{"FallingSquares", 1300, 300, 10, 300, 10, 1, init_falling_squares, default_update, NULL, NULL},
+	{"FallingCircles", 1300, 300, 10, 300, 10, 2, init_falling_circles, default_update, NULL, NULL},
+	{"Tumbler", 1500, 1000, 50, 1000, 50, 1, init_tumbler, tumbler_update, tumbler_destroy_state, NULL},
+	{"AddPair", 1000, 2000, 100, 2500, 100, 4, init_add_pair, add_pair_update, NULL, NULL},
+	{"MildN2", 100, 200, 10, 200, 10, 10, init_mild_n2, default_update, NULL, NULL},
+	{"N2", 100, 750, 25, 750, 25, 60, init_n2, default_update, NULL, NULL},
+	{"Multifixture", 500, 100, 5, 100, 5, 3, init_multifixture, default_update, NULL, NULL},
+	{"MostlyStaticSingleBody", 400, 200, 10, 200, 5, 160, init_mostly_static_single_body, default_update, NULL, NULL},
+	{"MostlyStaticMultiBody", 400, 200, 10, 200, 5, 160, init_mostly_static_multi_body, default_update, NULL, NULL},
+	{"Diagonal", 1000, 50, 2, 50, 2, 10, init_diagonal, default_update, NULL, NULL},
+	{"MixedStaticDynamic", 400, 6000, 100, 6000, 100, 7, init_mixed_static_dynamic, default_update, NULL, NULL},
+	{"BigMobile", 1000, 11, 1, 11, 1, 150, init_big_mobile, default_update, NULL, NULL},
+	{"SlowExplosion", 1000, 6000, 100, 6000, 100, 25, init_slow_explosion, default_update, NULL, NULL},
+	{"FrictionalPyramid", 900, 45, 8, 45, 1, 4, init_frictional_pyramid, default_update, NULL, NULL},
+	{"CollisionCallbacks", 600, 240, 24, 240, 12, 20, init_collision_callbacks, default_update, callback_destroy_state, callback_print_metrics},
+	{"SleepWake", 420, 200, 20, 200, 10, 200, init_sleep_wake, sleep_wake_update, sleep_wake_destroy_state, NULL},
 };
 
 static int benchmark_count = (int)(sizeof(benchmarks)/sizeof(benchmarks[0]));
@@ -1013,7 +1168,9 @@ run_summary_json(Benchmark *benchmark, int size, const int *input_checkpoints, i
 			checkpoint_index++;
 		}
 	}
-	printf("]}");
+	printf("]");
+	if(benchmark->print_metrics) benchmark->print_metrics(state);
+	printf("}");
 
 	free_space_children(space);
 	cpSpaceFree(space);

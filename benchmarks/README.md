@@ -110,12 +110,14 @@ bun benchmarks/tools/record-results.ts \
 ```
 
 Defaults are two warm-ups, ten samples, calibrated automatic batches, protocol
-`munkbench-v1`, and remote branch `origin/benchmark-data`. The working tree must
+`munkbench-v2`, and remote branch `origin/benchmark-data`. Version 2 adds
+non-zero-friction, collision-callback, and sleep/wake coverage. The working tree must
 be clean. Use `--dry-run --output run.json` to validate and inspect a record
 without committing or pushing it.
 
 Recorded paths are organized by environment, protocol, year, timestamp, and
 commit. Changing the machine, compiler baseline, benchmark workload, or timing
 semantics should start a new environment or protocol series instead of silently
-continuing an incompatible graph. The versioned format is documented by
-[`results-schema-v1.json`](results-schema-v1.json).
+continuing an incompatible graph. The current versioned format is documented by
+[`results-schema-v2.json`](results-schema-v2.json). The v1 schema remains in the
+repository for historical 13-scenario records.
