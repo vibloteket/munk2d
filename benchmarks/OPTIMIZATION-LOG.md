@@ -1,0 +1,87 @@
+# Munk2D optimization log
+
+Short record of measured optimization experiments. Percentages are lower-is-faster.
+Candidates are accepted only after tests, exact MunkBench validation, and alternating
+baseline/candidate measurements. Check this file before repeating an experiment.
+
+## Accepted
+
+| Area | Change | Result | PR |
+|---|---|---|---|
+| BBTree | Larger fat bounds for isolated fast movers | SlowExplosion about -14%; neutral elsewhere | [#7](https://github.com/vibloteket/munk2d/pull/7) |
+| BBTree | Reuse BB already fetched by `LeafUpdate` | SlowExplosion about -3% standalone | [#8](https://github.com/vibloteket/munk2d/pull/8) |
+| BBTree | Cache bounds and simplify insertion-cost arithmetic | Diagonal -10%, SlowExplosion -9%, Multifixture -6% incremental | [#9](https://github.com/vibloteket/munk2d/pull/9), [#10](https://github.com/vibloteket/munk2d/pull/10) |
+| Callbacks | Skip default no-op begin/pre/post callbacks | Contact workloads about -0.5% to -1.8% | [#11](https://github.com/vibloteket/munk2d/pull/11) |
+| Narrow phase | Direct built-in collision dispatch | Multifixture -4.7%; collision workloads about -0.7% to -2% | [#12](https://github.com/vibloteket/munk2d/pull/12) |
+| Solver | Dedicated scalar frictionless path | Zero-friction contact workloads about -2% to -10%; friction 0.7 control neutral | [#13](https://github.com/vibloteket/munk2d/pull/13) |
+| GJK | Start polygon support scan at vertex 1 | Polygon-heavy workloads about -0.3% to -0.9% | [#16](https://github.com/vibloteket/munk2d/pull/16) |
+| GJK/EPA | Dispatch support points by shape pair | Polygon/contact workloads about -1% to -2% | [#17](https://github.com/vibloteket/munk2d/pull/17) |
+
+## Rejected: BBTree
+
+| Experiment | Outcome / reason |
+|---|---|
+| Global fat-AABB coefficient sweep | Large sparse-world wins, but AddPair/Diagonal/Multifixture regressed up to 10–70%; trajectories changed. |
+| Velocity-only adaptive fat AABB | SlowExplosion -26%, but dense scenes regressed badly; trajectories changed. |
+| Initial traversal stack size 16/32/64/128 | Mostly within 1%; current 64 retained. |
+| Contiguous leaf list | AddPair/SlowExplosion improved 2–3%, but changed iteration order and validation trajectories. |
+| Cache area in every node | Diagonal/SlowExplosion improved 1–2%, MixedStaticDynamic regressed and nodes grew. |
+| Manual `MarkLeafQuery` intersection | Neutral; Diagonal regressed about 1%. |
+| Stop ancestor updates when bounds already contain leaf | Small/noisy; no general win. |
+
+## Rejected: solver and data layout
+
+| Experiment | Outcome / reason |
+|---|---|
+| Direct scalar vector expansion | Changed floating-point evaluation order and trajectories. |
+| `restrict` body/arbiter pointers | Mixed; FallingSquares regressed about 0.7%. |
+| Cache arbiter array/count outside loops | Near neutral; no primary-workload win. |
+| Force contact-loop unrolling | Small mixed changes; FallingSquares did not improve. |
+| Explicit one-/two-contact solver paths | One-contact cases improved, FallingSquares regressed 0.3–0.6%. |
+| Cache tangent / hoist `cpvperp(n)` | Compiler already did the useful work; neutral. |
+| Local body velocity/bias copies with one write-back | Realistic friction/callback/sleep scenes regressed 2–4%. |
+| Combined normal/tangent effective-mass calculation | Changed floating-point order; exact validation failed. |
+| Inline two contacts in `cpArbiter` | Arbiter grew from 184 to about 376 bytes; contact workloads regressed 1–2%. |
+| Reorder `cpBody` hot fields | No general win; BigMobile/SlowExplosion regressed about 1%. |
+| Reorder `cpArbiter` hot fields | Neutral/mixed; callback workloads regressed. |
+| Reorder `cpContact` hot fields | Neutral; no robust improvement. |
+| Move contact hashes out of `cpContact` | Contact shrank 96 to 88 bytes but arbiter grew; callbacks regressed about 1%. |
+| Direct/default body integrator calls | SleepWake improved, several contact workloads regressed about 0.5%. |
+| Cache damping and collision-bias powers | Mixed and required extra `cpSpace` state. |
+| Unit-damping `pow` fast path | Too small/mixed. |
+| Skip default `separate` callbacks | About 1% at one SleepWake size; gain vanished when scaled. |
+| Explicit impulse helper expansion | Helped callback/sleep cases, neutral or negative elsewhere. |
+
+## Rejected: collision, callbacks, and shape updates
+
+| Experiment | Outcome / reason |
+|---|---|
+| Direct circle shape update globally | Large isolated gains, but polygon/joint workloads regressed. |
+| Direct circle update only in all-circle/sparse worlds | SlowExplosion improved about 11%, but several unrelated workloads regressed slightly; bookkeeping too broad. |
+| Empty collision-handler hash fast path | Some contact cases improved 0.5–1.3%, Diagonal/Multifixture mixed or worse. |
+| Per-arbiter handler cache with generation | AddPair improved about 1.3%, otherwise neutral/noisy; added state. |
+| Hash comparison before equality callback | Neutral overall. |
+| Initialize polygon AABB from first vertex | Multifixture about -1.4%, otherwise neutral/noisy. |
+| Zero-elasticity bounce fast path | Neutral overall. |
+
+## Rejected: GJK/EPA
+
+| Experiment | Outcome / reason |
+|---|---|
+| Three-point EPA first-iteration specialization | Exact, but neutral/mixed. |
+| Four-vertex polygon support specialization | Box scenes improved 1–3%, FallingSquares/Tumbler regressed 3–5% from code-layout effects. |
+| Replace polygon edge modulo with branches | Some realistic scenes improved, FallingSquares/Tumbler regressed 0.5–0.7% on x86. |
+| Pointer iteration in polygon support scan | Neutral. |
+| Scalar rewrite of `ClosestDist` | Neutral/mixed. |
+
+## Benchmark and CI changes
+
+- [#14](https://github.com/vibloteket/munk2d/pull/14): email only changed baseline/current gallery PNGs.
+- [#15](https://github.com/vibloteket/munk2d/pull/15): add FrictionalPyramid, CollisionCallbacks, and SleepWake; protocol `munkbench-v2` has 16 scenarios.
+- A permanent CI change disabling third-party APT repositories was rejected; transient mirror failures should be rerun.
+
+## Current profile notes
+
+- `cpArbiterApplyImpulse` remains the largest contact-heavy hotspot (roughly 36–59% self time).
+- GJK/EPA calls are usually shallow; support-point work matters more than recursion depth.
+- Realistic contact workloads show low L1D miss rates (roughly 0.4–1.1%); simple struct reordering has not helped.
