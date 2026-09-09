@@ -92,6 +92,8 @@ SupportPointNew(cpVect p, cpCollisionID index)
 }
 
 typedef struct SupportPoint (*SupportPointFunc)(const cpShape *shape, const cpVect n);
+struct SupportContext;
+typedef struct MinkowskiPoint (*SupportPairFunc)(const struct SupportContext *ctx, const cpVect n);
 
 static inline struct SupportPoint
 CircleSupportPoint(const cpCircleShape *circle, const cpVect n)
@@ -136,16 +138,23 @@ MinkowskiPointNew(const struct SupportPoint a, const struct SupportPoint b)
 
 struct SupportContext {
 	const cpShape *shape1, *shape2;
-	SupportPointFunc func1, func2;
+	SupportPairFunc pair;
 };
+
+static struct MinkowskiPoint SupportSegmentSegment(const struct SupportContext *ctx, const cpVect n)
+{return MinkowskiPointNew(SegmentSupportPoint((const cpSegmentShape *)ctx->shape1, cpvneg(n)), SegmentSupportPoint((const cpSegmentShape *)ctx->shape2, n));}
+static struct MinkowskiPoint SupportPolyPoly(const struct SupportContext *ctx, const cpVect n)
+{return MinkowskiPointNew(PolySupportPoint((const cpPolyShape *)ctx->shape1, cpvneg(n)), PolySupportPoint((const cpPolyShape *)ctx->shape2, n));}
+static struct MinkowskiPoint SupportSegmentPoly(const struct SupportContext *ctx, const cpVect n)
+{return MinkowskiPointNew(SegmentSupportPoint((const cpSegmentShape *)ctx->shape1, cpvneg(n)), PolySupportPoint((const cpPolyShape *)ctx->shape2, n));}
+static struct MinkowskiPoint SupportCirclePoly(const struct SupportContext *ctx, const cpVect n)
+{return MinkowskiPointNew(CircleSupportPoint((const cpCircleShape *)ctx->shape1, cpvneg(n)), PolySupportPoint((const cpPolyShape *)ctx->shape2, n));}
 
 // Calculate the maximal point on the minkowski difference of two shapes along a particular axis.
 static inline struct MinkowskiPoint
 Support(const struct SupportContext *ctx, const cpVect n)
 {
-	struct SupportPoint a = ctx->func1(ctx->shape1, cpvneg(n));
-	struct SupportPoint b = ctx->func2(ctx->shape2, n);
-	return MinkowskiPointNew(a, b);
+	return ctx->pair(ctx, n);
 }
 
 struct EdgePoint {
@@ -573,7 +582,7 @@ CircleToSegment(const cpCircleShape *circle, const cpSegmentShape *segment, stru
 static void
 SegmentToSegment(const cpSegmentShape *seg1, const cpSegmentShape *seg2, struct cpCollisionInfo *info)
 {
-	struct SupportContext context = {(cpShape *)seg1, (cpShape *)seg2, (SupportPointFunc)SegmentSupportPoint, (SupportPointFunc)SegmentSupportPoint};
+	struct SupportContext context = {(cpShape *)seg1, (cpShape *)seg2, SupportSegmentSegment};
 	struct ClosestPoints points = GJK(&context, &info->id);
 	
 #if DRAW_CLOSEST
@@ -608,7 +617,7 @@ SegmentToSegment(const cpSegmentShape *seg1, const cpSegmentShape *seg2, struct 
 static void
 PolyToPoly(const cpPolyShape *poly1, const cpPolyShape *poly2, struct cpCollisionInfo *info)
 {
-	struct SupportContext context = {(cpShape *)poly1, (cpShape *)poly2, (SupportPointFunc)PolySupportPoint, (SupportPointFunc)PolySupportPoint};
+	struct SupportContext context = {(cpShape *)poly1, (cpShape *)poly2, SupportPolyPoly};
 	struct ClosestPoints points = GJK(&context, &info->id);
 	
 #if DRAW_CLOSEST
@@ -631,7 +640,7 @@ PolyToPoly(const cpPolyShape *poly1, const cpPolyShape *poly2, struct cpCollisio
 static void
 SegmentToPoly(const cpSegmentShape *seg, const cpPolyShape *poly, struct cpCollisionInfo *info)
 {
-	struct SupportContext context = {(cpShape *)seg, (cpShape *)poly, (SupportPointFunc)SegmentSupportPoint, (SupportPointFunc)PolySupportPoint};
+	struct SupportContext context = {(cpShape *)seg, (cpShape *)poly, SupportSegmentPoly};
 	struct ClosestPoints points = GJK(&context, &info->id);
 	
 #if DRAW_CLOSEST
@@ -663,7 +672,7 @@ SegmentToPoly(const cpSegmentShape *seg, const cpPolyShape *poly, struct cpColli
 static void
 CircleToPoly(const cpCircleShape *circle, const cpPolyShape *poly, struct cpCollisionInfo *info)
 {
-	struct SupportContext context = {(cpShape *)circle, (cpShape *)poly, (SupportPointFunc)CircleSupportPoint, (SupportPointFunc)PolySupportPoint};
+	struct SupportContext context = {(cpShape *)circle, (cpShape *)poly, SupportCirclePoly};
 	struct ClosestPoints points = GJK(&context, &info->id);
 	
 #if DRAW_CLOSEST
