@@ -63,10 +63,10 @@ cpCollisionInfoPushContact(struct cpCollisionInfo *info, cpVect p1, cpVect p2, c
 static inline int
 PolySupportPointIndex(const int count, const struct cpSplittingPlane *planes, const cpVect n)
 {
-	cpFloat max = -INFINITY;
+	cpFloat max = cpvdot(planes[0].v0, n);
 	int index = 0;
 	
-	for(int i=0; i<count; i++){
+	for(int i=1; i<count; i++){
 		cpVect v = planes[i].v0;
 		cpFloat d = cpvdot(v, n);
 		if(d > max){
