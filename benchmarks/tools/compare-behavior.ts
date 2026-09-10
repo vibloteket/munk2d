@@ -90,6 +90,7 @@ for (const [name, base] of baselineByName) {
     if (current.max_linear_velocity > limits.max_linear_velocity) fail(name, "max_linear_velocity", { step, candidate: current.max_linear_velocity, allowed: `<= ${limits.max_linear_velocity}` });
     if (current.max_angular_velocity > limits.max_angular_velocity) fail(name, "max_angular_velocity", { step, candidate: current.max_angular_velocity, allowed: `<= ${limits.max_angular_velocity}` });
 
+    const scenarioLimits = envelope.scenario_limits?.[name] ?? {};
     const bodyCount = Math.max(1, baseCheckpoint.dynamic_bodies);
     for (const metric of ["sum_position", "sum_velocity"]) {
       for (let axis = 0; axis < 2; axis++) compareScalar(name, step, `${metric}[${axis}]`, baseCheckpoint[metric][axis], current[metric][axis], limits.aggregate_relative, limits.aggregate_absolute_per_body * bodyCount);
@@ -98,13 +99,13 @@ for (const [name, base] of baselineByName) {
       if (baseCheckpoint[metric] === null || current[metric] === null) {
         if (baseCheckpoint[metric] !== current[metric]) fail(name, metric, { step, baseline: baseCheckpoint[metric], candidate: current[metric], allowed: "both null or both arrays" });
       } else {
-        for (let i = 0; i < 4; i++) compareScalar(name, step, `${metric}[${i}]`, baseCheckpoint[metric][i], current[metric][i], limits.bounds_relative, limits.bounds_absolute);
+        for (let i = 0; i < 4; i++) compareScalar(name, step, `${metric}[${i}]`, baseCheckpoint[metric][i], current[metric][i], limits.bounds_relative, scenarioLimits.bounds_absolute ?? limits.bounds_absolute);
       }
     }
     for (const metric of ["contact_pairs", "contact_points"]) compareScalar(name, step, metric, baseCheckpoint[metric], current[metric], limits.contact_relative, limits.contact_absolute);
     compareScalar(name, step, "total_kinetic_energy", baseCheckpoint.total_kinetic_energy, current.total_kinetic_energy, limits.energy_ratio - 1, limits.energy_absolute);
-    compareScalar(name, step, "max_linear_velocity", baseCheckpoint.max_linear_velocity, current.max_linear_velocity, limits.max_velocity_ratio - 1, limits.max_velocity_absolute);
-    compareScalar(name, step, "max_angular_velocity", baseCheckpoint.max_angular_velocity, current.max_angular_velocity, limits.max_velocity_ratio - 1, limits.max_velocity_absolute);
+    compareScalar(name, step, "max_linear_velocity", baseCheckpoint.max_linear_velocity, current.max_linear_velocity, limits.max_velocity_ratio - 1, scenarioLimits.max_velocity_absolute ?? limits.max_velocity_absolute);
+    compareScalar(name, step, "max_angular_velocity", baseCheckpoint.max_angular_velocity, current.max_angular_velocity, limits.max_velocity_ratio - 1, scenarioLimits.max_velocity_absolute ?? limits.max_velocity_absolute);
   }
 }
 for (const name of candidateByName.keys()) if (!baselineByName.has(name)) warnings.push({ benchmark: name, metric: "benchmark", candidate: "new", allowed: "not compared" });

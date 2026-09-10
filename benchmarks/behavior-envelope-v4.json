@@ -29,6 +29,10 @@
     "max_velocity_ratio": 3.0,
     "max_velocity_absolute": 1.0
   },
+  "scenario_limits": {
+    "AddPair": { "bounds_absolute": 60.0 },
+    "Tumbler": { "max_velocity_absolute": 2.0 }
+  },
   "scenario_invariants": {
     "FrictionalPyramid": { "final_contact_pairs_min": 1 },
     "CollisionCallbacks": {
