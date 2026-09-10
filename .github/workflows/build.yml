@@ -14,6 +14,9 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
 
       - name: Configure CMake
         run: >
@@ -213,6 +216,47 @@ jobs:
             -DBUILD_DEMOS=OFF -DBUILD_TESTING=OFF -DBUILD_BENCHMARKS=ON \
             -S "${{ runner.temp }}/munkbench-base"
           cmake --build "${{ runner.temp }}/munkbench-base-build" --target munkbench --parallel
+
+      - name: Compare MunkBench behavior envelope with PR base
+        if: github.event_name == 'pull_request'
+        shell: bash
+        run: |
+          set -euo pipefail
+          MUNKBENCH="${{ runner.temp }}/munkbench-base-build/benchmarks/munkbench"
+          SUMMARY_DIR="${{ runner.temp }}/munkbench-base-summaries"
+          mkdir -p "$SUMMARY_DIR"
+
+          run_smoke() {
+            local benchmark="$1"
+            local checkpoints="$2"
+            shift 2
+            "$MUNKBENCH" --summary-json -b "$benchmark" --checkpoints "$checkpoints" "$@" \
+              > "$SUMMARY_DIR/$benchmark.json"
+          }
+
+          run_smoke FallingSquares 0,1,10,50
+          run_smoke FallingCircles 0,1,10,50
+          run_smoke Tumbler 0,1,10,50
+          run_smoke AddPair 0,1,10,50
+          run_smoke MildN2 0,1
+          run_smoke N2 0,1,10,50
+          run_smoke Multifixture 0,1
+          run_smoke MostlyStaticSingleBody 0,1,10,25
+          run_smoke MostlyStaticMultiBody 0,1,10,50
+          run_smoke Diagonal 0,1,10,50
+          run_smoke MixedStaticDynamic 0,1,10,50 -s 1
+          run_smoke BigMobile 0,1,10,50
+          run_smoke SlowExplosion 0,1,10,50
+          run_smoke FrictionalPyramid 0,1,10,50
+          run_smoke CollisionCallbacks 0,1,10,50
+          run_smoke SleepWake 0,1,10,50,180,181,420
+          run_smoke SurfaceVelocity 0,1,10,50
+
+          jq -s '{version: .[0].version, benchmarks: map(.benchmarks[]) }' \
+            "$SUMMARY_DIR"/*.json > "${{ runner.temp }}/munkbench-base-summary.json"
+          bun benchmarks/tools/compare-behavior.ts \
+            --baseline "${{ runner.temp }}/munkbench-base-summary.json" \
+            --candidate "${{ github.workspace }}/munkbench-summary.json"
 
       - name: Compare MunkBench snapshots with PR base
         if: github.event_name == 'pull_request'

@@ -1,8 +1,11 @@
 # Munk2D optimization log
 
 Short record of measured optimization experiments. Percentages are lower-is-faster.
-Candidates are accepted only after tests, exact MunkBench validation, and alternating
-baseline/candidate measurements. Check this file before repeating an experiment.
+For Munk2D 2.x, candidates are accepted only after tests, exact MunkBench validation,
+and alternating baseline/candidate measurements. Major-version experiments may use
+the versioned `munkbench-v4` behavior envelope when trajectory changes are intentional,
+but must remain deterministic and pass its stability and scenario invariants. Check
+this file before repeating an experiment.
 
 ## Accepted
 

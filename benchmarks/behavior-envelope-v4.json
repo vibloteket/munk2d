@@ -1,0 +1,50 @@
+{
+  "protocol": "munkbench-v4",
+  "description": "Cross-version behavior envelope for intentionally non-exact simulation changes.",
+  "exact_integer_metrics": [
+    "bodies",
+    "dynamic_bodies",
+    "static_bodies",
+    "kinematic_bodies",
+    "shapes",
+    "constraints"
+  ],
+  "finite_metrics": [
+    "total_mass",
+    "total_kinetic_energy",
+    "max_linear_velocity",
+    "max_angular_velocity"
+  ],
+  "limits": {
+    "max_linear_velocity": 100000000,
+    "max_angular_velocity": 100000000,
+    "aggregate_relative": 0.25,
+    "aggregate_absolute_per_body": 2.0,
+    "bounds_relative": 0.35,
+    "bounds_absolute": 5.0,
+    "contact_relative": 0.5,
+    "contact_absolute": 8,
+    "energy_ratio": 4.0,
+    "energy_absolute": 1.0,
+    "max_velocity_ratio": 3.0,
+    "max_velocity_absolute": 1.0
+  },
+  "scenario_limits": {
+    "AddPair": { "bounds_absolute": 60.0 },
+    "Tumbler": { "max_velocity_absolute": 2.0 }
+  },
+  "scenario_invariants": {
+    "FrictionalPyramid": { "final_contact_pairs_min": 1 },
+    "CollisionCallbacks": {
+      "begin_count_min": 1,
+      "pre_solve_count_min": 1,
+      "post_solve_count_min": 1,
+      "wildcard_count_min": 1,
+      "pre_solve_greater_than_post_solve": true
+    },
+    "SleepWake": {
+      "sleeping_bodies_min_at_step": { "step": 50, "value": 1 },
+      "sleeping_bodies_decrease": { "before": 180, "after": 181 }
+    }
+  }
+}
