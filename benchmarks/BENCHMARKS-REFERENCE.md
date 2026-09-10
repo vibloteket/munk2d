@@ -93,6 +93,10 @@ A stack of frictional boxes with sleeping enabled. Bodies settle and sleep befor
 one body receives an impulse, wakes connected bodies, and settles again. Covers
 contact persistence and movement between sleeping/static and dynamic indexes.
 
+### 17. Surface Velocity
+
+A frictional conveyor-like ground segment with non-zero surface velocity carrying mixed circles and boxes. Covers the tangent solver and transport-belt behavior used by Pymunk applications.
+
 ---
 
 ## Performance Context
@@ -124,6 +128,7 @@ contact persistence and movement between sleeping/static and dynamic indexes.
 | Frictional Pyramid     | Normal            | Non-zero friction solver |
 | Collision Callbacks    | Normal            | Handler and wildcard callbacks |
 | Sleep/Wake             | Normal            | Sleeping, activation, contact persistence |
+| Surface Velocity       | Normal            | Friction + non-zero surface velocity |
 
 ## CCD Benchmarks
 

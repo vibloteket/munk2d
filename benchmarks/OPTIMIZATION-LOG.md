@@ -85,6 +85,7 @@ baseline/candidate measurements. Check this file before repeating an experiment.
 
 - [#14](https://github.com/vibloteket/munk2d/pull/14): email only changed baseline/current gallery PNGs.
 - [#15](https://github.com/vibloteket/munk2d/pull/15): add FrictionalPyramid, CollisionCallbacks, and SleepWake; protocol `munkbench-v2` has 16 scenarios.
+- SurfaceVelocity adds a conveyor-style non-zero surface-velocity control; protocol `munkbench-v3` has 17 scenarios.
 - A permanent CI change disabling third-party APT repositories was rejected; transient mirror failures should be rerun.
 
 ## Current profile notes
