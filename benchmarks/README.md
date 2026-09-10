@@ -87,6 +87,25 @@ dynamic body bounds, shape bounds, aggregate position and velocity sums, kinetic
 energy, max velocities, sleeping body counts, and an `invalid_values` count for
 NaN/Inf detection.
 
+### Behavior-envelope comparison
+
+Major-version optimization work may intentionally change floating-point evaluation
+or deterministic processing order. In those cases, compare summaries with the
+`munkbench-v4` behavior envelope instead of requiring byte-identical trajectories:
+
+```sh
+bun benchmarks/tools/compare-behavior.ts \
+  --baseline baseline-summary.json \
+  --candidate candidate-summary.json
+```
+
+The envelope in `behavior-envelope-v4.json` keeps topology and finite-value checks
+strict, bounds aggregate motion/contact/energy changes, and enforces scenario-specific
+callback, friction, and sleep/wake behavior. It does not make every divergent
+trajectory valid: candidates outside any limit fail with the metric, values, and
+allowed difference in the JSON report. Repeated runs of one build should still be
+byte-identical unless an explicitly non-deterministic execution mode is introduced.
+
 ## SVG snapshots
 
 A selected benchmark can be rendered to SVG for visual comparison:
