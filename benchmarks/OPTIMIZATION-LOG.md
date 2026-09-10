@@ -91,6 +91,7 @@ baseline/candidate measurements. Check this file before repeating an experiment.
 | Pair-kind switch replacing support function pointer | Broad regressions around 0.2–2%; indirect call was better predicted. |
 | Direct scalar bounce projection | Neutral. |
 | Zero-surface-velocity fast path in arbiter update | Neutral/mixed; branch cost matched saved projection work. |
+| Constraint-list null guard in broad-phase rejection | Neutral. |
 
 ## Benchmark and CI changes
 
