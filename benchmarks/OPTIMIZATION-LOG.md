@@ -71,6 +71,9 @@ quality/performance tradeoffs require explicit approval before implementation.
 | Exact tangent-mass dot-product identity | Several cases improved below 1%, FrictionalPyramid remained about 0.2% slower after 50 rounds. |
 | Filter cached-impulse calls in caller | Neutral. |
 | Directly unroll two-contact persistence matching | Neutral. |
+| Hoist all-frictionless dispatch out of solver iterations | SleepWake/CollisionCallbacks improved 0.8–1.4%, but FallingSquares/FrictionalPyramid/SurfaceVelocity regressed 0.4–0.7%. |
+| Hoist empty constraint-list path out of solver iterations | SleepWake improved about 1.4%, but FrictionalPyramid/SurfaceVelocity regressed about 0.5–0.8%. |
+| Prefetch next arbiter/contact/body solver data | Broad prefetch improved FallingSquares about 1.1% but regressed friction cases about 0.3%; contact-only prefetch retained a roughly 0.3% SurfaceVelocity regression; frictionless-only prefetch regressed SurfaceVelocity about 0.6%. |
 
 ## Rejected: collision, callbacks, and shape updates
 
