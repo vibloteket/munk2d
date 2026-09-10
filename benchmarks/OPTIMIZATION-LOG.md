@@ -5,7 +5,9 @@ For Munk2D 2.x, candidates are accepted only after tests, exact MunkBench valida
 and alternating baseline/candidate measurements. Major-version experiments may use
 the versioned `munkbench-v4` behavior envelope when trajectory changes are intentional,
 but must remain deterministic and pass its stability and scenario invariants. Check
-this file before repeating an experiment.
+this file before repeating an experiment. Reducing solver iterations, collision
+accuracy, convergence, or numeric precision is not treated as an optimization; such
+quality/performance tradeoffs require explicit approval before implementation.
 
 ## Accepted
 

@@ -106,6 +106,13 @@ trajectory valid: candidates outside any limit fail with the metric, values, and
 allowed difference in the JSON report. Repeated runs of one build should still be
 byte-identical unless an explicitly non-deterministic execution mode is introduced.
 
+Passing this envelope demonstrates bounded compatibility, not equal solver precision.
+Changes that intentionally reduce iteration count, collision accuracy, convergence,
+or numerical precision are quality/performance tradeoffs rather than ordinary
+optimizations and require an explicit design decision before implementation. The v4
+envelope is intended primarily for mathematically equivalent implementation changes
+whose floating-point ordering or deterministic processing order differs.
+
 ## SVG snapshots
 
 A selected benchmark can be rendered to SVG for visual comparison:
