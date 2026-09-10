@@ -52,6 +52,9 @@ baseline/candidate measurements. Check this file before repeating an experiment.
 | Unit-damping `pow` fast path | Too small/mixed. |
 | Skip default `separate` callbacks | About 1% at one SleepWake size; gain vanished when scaled. |
 | Explicit impulse helper expansion | Helped callback/sleep cases, neutral or negative elsewhere. |
+| Frictionless solver omitting `surface_velocity` | Improved zero-friction cases about 0.3–1.1% and was neutral in SurfaceVelocity, but a sloped control changed floating-point results. |
+| Early-stop generic hash filtering after visiting all entries | SleepWake -1.7% once, but scaling was neutral/slower; rejected. |
+| Directly unroll max-two contact persistence matching | Neutral. |
 | Separate static-body solver selected per arbiter | Callback/SleepWake improved about 7.5%, but dynamic-only contact workloads regressed 1–2%. |
 | Cache body solver state locally per arbiter | Realistic friction/callback/sleep scenarios regressed 2–4%. |
 | Frictionless solver ignoring `surface_velocity` | Benchmarks improved up to 1.1%, but a sloped non-zero-surface-velocity control changed floating-point results. |
@@ -74,6 +77,7 @@ baseline/candidate measurements. Check this file before repeating an experiment.
 | Per-arbiter handler cache with generation | AddPair improved about 1.3%, otherwise neutral/noisy; added state. |
 | Hash comparison before equality callback | Neutral overall. |
 | Initialize polygon AABB from first vertex | Multifixture about -1.4%, otherwise neutral/noisy. |
+| Four-vertex polygon cache-data loop | Multifixture -3.4%, but MostlyStatic regressed 0.6–0.7%. |
 | Zero-elasticity bounce fast path | Neutral overall. |
 
 ## Rejected: GJK/EPA
@@ -97,6 +101,7 @@ baseline/candidate measurements. Check this file before repeating an experiment.
 
 - [#14](https://github.com/vibloteket/munk2d/pull/14): email only changed baseline/current gallery PNGs.
 - [#15](https://github.com/vibloteket/munk2d/pull/15): add FrictionalPyramid, CollisionCallbacks, and SleepWake; protocol `munkbench-v2` has 16 scenarios.
+- SurfaceVelocity adds a permanent non-zero surface-velocity counterexample; protocol `munkbench-v3` has 17 scenarios.
 - SurfaceVelocity adds a conveyor-style non-zero surface-velocity control; protocol `munkbench-v3` has 17 scenarios.
 - A permanent CI change disabling third-party APT repositories was rejected; transient mirror failures should be rerun.
 
