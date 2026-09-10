@@ -762,6 +762,23 @@ init_collision_callbacks(int size, void **state)
 	return space;
 }
 
+static cpSpace *
+init_surface_velocity(int size, void **state)
+{
+	(void)state;
+	cpSpace *space = new_space(0.0, -100.0);
+	cpShape *ground = add_static_segment(space, cpv(-60.0, 0.0), cpv(60.0, 0.0), 0.5);
+	cpShapeSetFriction(ground, 0.8);
+	cpShapeSetSurfaceVelocity(ground, cpv(12.0, 0.0));
+
+	for(int i = 0; i < size; i++){
+		cpBody *body = add_dynamic_body(space, cpv((cpFloat)(i % 12) - 6.0, 0.75 + 1.1*(cpFloat)(i/12)));
+		cpShape *shape = (i % 2 == 0 ? add_circle_shape(space, body, 0.45, cpvzero, 1.0) : add_box_shape(space, body, 0.8, 0.8, 1.0));
+		cpShapeSetFriction(shape, 0.8);
+	}
+	return space;
+}
+
 static void sleep_wake_update(cpSpace *space, void *state, cpFloat dt)
 {
 	SleepWakeState *sleep = (SleepWakeState *)state;
@@ -817,6 +834,7 @@ static Benchmark benchmarks[] = {
 	{"FrictionalPyramid", 900, 45, 8, 45, 1, 4, init_frictional_pyramid, default_update, NULL, NULL},
 	{"CollisionCallbacks", 600, 240, 24, 240, 12, 20, init_collision_callbacks, default_update, callback_destroy_state, callback_print_metrics},
 	{"SleepWake", 420, 200, 20, 200, 10, 200, init_sleep_wake, sleep_wake_update, sleep_wake_destroy_state, NULL},
+	{"SurfaceVelocity", 600, 240, 24, 240, 12, 20, init_surface_velocity, default_update, NULL, NULL},
 };
 
 static int benchmark_count = (int)(sizeof(benchmarks)/sizeof(benchmarks[0]));

@@ -4,7 +4,7 @@
 import { mkdir, rm } from "node:fs/promises";
 import { basename, resolve } from "node:path";
 
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 const args = process.argv.slice(2);
 
 function option(name: string, fallback?: string): string | undefined {
@@ -20,7 +20,7 @@ function has(name: string): boolean {
 
 function usage(): never {
   console.error(
-    `Usage: bun benchmarks/tools/record-results.ts [options]\n\nOptions:\n  --revision REF       Revision to record (default: HEAD)\n  --environment ID     Stable environment series ID (default: hostname)\n  --protocol ID        Benchmark protocol ID (default: munkbench-v2)\n  --samples N          Raw samples per benchmark (default: 10)\n  --warmup N           Untimed warmups (default: 2)\n  --data-branch NAME   Results branch (default: benchmark-data)\n  --remote NAME        Git remote (default: origin)\n  --output PATH        Also copy generated run JSON to PATH\n  --dry-run            Generate and validate without committing/pushing\n`,
+    `Usage: bun benchmarks/tools/record-results.ts [options]\n\nOptions:\n  --revision REF       Revision to record (default: HEAD)\n  --environment ID     Stable environment series ID (default: hostname)\n  --protocol ID        Benchmark protocol ID (default: munkbench-v3)\n  --samples N          Raw samples per benchmark (default: 10)\n  --warmup N           Untimed warmups (default: 2)\n  --data-branch NAME   Results branch (default: benchmark-data)\n  --remote NAME        Git remote (default: origin)\n  --output PATH        Also copy generated run JSON to PATH\n  --dry-run            Generate and validate without committing/pushing\n`,
   );
   process.exit(2);
 }
@@ -29,7 +29,7 @@ if (has("--help") || has("-h")) usage();
 
 const revision = option("--revision", "HEAD")!;
 const environmentArg = option("--environment");
-const protocol = option("--protocol", "munkbench-v2")!;
+const protocol = option("--protocol", "munkbench-v3")!;
 const samples = Number(option("--samples", "10"));
 const warmup = Number(option("--warmup", "2"));
 const dataBranch = option("--data-branch", "benchmark-data")!;
@@ -105,7 +105,7 @@ const allowedDuringDryRun = [
   "benchmarks/BENCHMARKS-REFERENCE.md",
   "benchmarks/README.md",
   "benchmarks/munkbench.c",
-  "benchmarks/results-schema-v2.json",
+  "benchmarks/results-schema-v3.json",
   "benchmarks/tools",
 ];
 if (
@@ -199,7 +199,7 @@ try {
     sleepCheckpoints.find((checkpoint: any) => checkpoint.step === step)
       ?.sleeping_bodies;
   const validationOk =
-    validation.benchmarks.length === 16 &&
+    validation.benchmarks.length === 17 &&
     validation.benchmarks.every((b: any) =>
       b.checkpoints.every((c: any) => c.invalid_values === 0),
     ) &&
@@ -227,8 +227,8 @@ try {
   );
   const rows = parseCsv(csv);
   const names = [...new Set(rows.map((row) => row.benchmark))];
-  if (names.length !== 16)
-    throw new Error(`Expected 16 benchmarks, got ${names.length}`);
+  if (names.length !== 17)
+    throw new Error(`Expected 17 benchmarks, got ${names.length}`);
   const benchmarks = names.map((name) => {
     const selected = rows.filter((row) => row.benchmark === name);
     if (selected.length !== samples)
