@@ -71,6 +71,7 @@ struct cpBBTree {
 	cpBBTreeVelocityFunc velocityFunc;
 	
 	cpHashSet *leaves;
+	cpArray *leafArray;
 	Node *root;
 	
 	Node *pooledNodes;
@@ -693,6 +694,7 @@ cpBBTreeInit(cpBBTree *tree, cpSpatialIndexBBFunc bbfunc, cpSpatialIndex *static
 	tree->velocityFunc = NULL;
 	
 	tree->leaves = cpHashSetNew(0, (cpHashSetEqlFunc)leafSetEql);
+	tree->leafArray = cpArrayNew(0);
 	tree->root = NULL;
 	
 	tree->pooledNodes = NULL;
@@ -724,6 +726,7 @@ static void
 cpBBTreeDestroy(cpBBTree *tree)
 {
 	cpHashSetFree(tree->leaves);
+	cpArrayFree(tree->leafArray);
 	
 	if(tree->allocatedBuffers) cpArrayFreeEach(tree->allocatedBuffers, cpfree);
 	cpArrayFree(tree->allocatedBuffers);
@@ -735,6 +738,7 @@ static void
 cpBBTreeInsert(cpBBTree *tree, void *obj, cpHashValue hashid)
 {
 	Node *leaf = (Node *)cpHashSetInsert(tree->leaves, hashid, obj, (cpHashSetTransFunc)leafSetTrans, tree);
+	cpArrayPush(tree->leafArray, leaf);
 	
 	Node *root = tree->root;
 	tree->root = SubtreeInsert(root, leaf, tree);
@@ -748,6 +752,7 @@ static void
 cpBBTreeRemove(cpBBTree *tree, void *obj, cpHashValue hashid)
 {
 	Node *leaf = (Node *)cpHashSetRemove(tree->leaves, hashid, obj);
+	cpArrayDeleteObj(tree->leafArray, leaf);
 	
 	tree->root = SubtreeRemove(tree->root, leaf, tree);
 	PairsClear(leaf, tree);
@@ -762,15 +767,15 @@ cpBBTreeContains(cpBBTree *tree, void *obj, cpHashValue hashid)
 
 //MARK: Reindex
 
-static void LeafUpdateWrap(Node *leaf, cpBBTree *tree) {LeafUpdate(leaf, tree);}
-
 static void
 cpBBTreeReindexQuery(cpBBTree *tree, cpSpatialIndexQueryFunc func, void *data)
 {
 	if(!tree->root) return;
 	
-	// LeafUpdate() may modify tree->root. Don't cache it.
-	cpHashSetEach(tree->leaves, (cpHashSetIteratorFunc)LeafUpdateWrap, tree);
+	// LeafUpdate() may modify tree->root. Iterate the dense leaf array for locality.
+	for(int i=0; i<tree->leafArray->num; i++){
+		LeafUpdate((Node *)tree->leafArray->arr[i], tree);
+	}
 	
 	cpSpatialIndex *staticIndex = tree->spatialIndex.staticIndex;
 	Node *staticRoot = (staticIndex && staticIndex->klass == Klass() ? ((cpBBTree *)staticIndex)->root : NULL);
@@ -821,18 +826,13 @@ cpBBTreeCount(cpBBTree *tree)
 	return cpHashSetCount(tree->leaves);
 }
 
-typedef struct eachContext {
-	cpSpatialIndexIteratorFunc func;
-	void *data;
-} eachContext;
-
-static void each_helper(Node *node, eachContext *context){context->func(node->obj, context->data);}
-
 static void
 cpBBTreeEach(cpBBTree *tree, cpSpatialIndexIteratorFunc func, void *data)
 {
-	eachContext context = {func, data};
-	cpHashSetEach(tree->leaves, (cpHashSetIteratorFunc)each_helper, &context);
+	for(int i=0; i<tree->leafArray->num; i++){
+		Node *leaf = (Node *)tree->leafArray->arr[i];
+		func(leaf->obj, data);
+	}
 }
 
 static cpSpatialIndexClass klass = {
@@ -861,12 +861,6 @@ static inline cpSpatialIndexClass *Klass(){return &klass;}
 static int
 cpfcompare(const cpFloat *a, const cpFloat *b){
 	return (*a < *b ? -1 : (*b < *a ? 1 : 0));
-}
-
-static void
-fillNodeArray(Node *node, Node ***cursor){
-	(**cursor) = node;
-	(*cursor)++;
 }
 
 static Node *
@@ -967,9 +961,7 @@ cpBBTreeOptimize(cpSpatialIndex *index)
 	
 	int count = cpBBTreeCount(tree);
 	Node **nodes = (Node **)cpcalloc(count, sizeof(Node *));
-	Node **cursor = nodes;
-	
-	cpHashSetEach(tree->leaves, (cpHashSetIteratorFunc)fillNodeArray, &cursor);
+	memcpy(nodes, tree->leafArray->arr, sizeof(Node *)*(size_t)count);
 	
 	SubtreeRecycle(tree, root);
 	tree->root = partitionNodes(tree, nodes, count);
