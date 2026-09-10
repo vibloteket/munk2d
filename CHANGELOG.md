@@ -4,6 +4,8 @@
 
 Changes:
 
+- PERF: Reduce the default impulse-solver iteration count from 10 to 8. Existing
+  applications can retain the previous behavior with `cpSpaceSetIterations(space, 10)`.
 - BUG: Fix stack overflow in cpBBTree when adding many shapes to a space.
   Converted recursive tree traversal functions to iterative implementations.
 - TEST: Add a first portable CMake/CTest-based C test executable.

@@ -96,6 +96,10 @@ test_cpbbsegmentquery(void)
 static void
 test_core_library_functions(void)
 {
+  cpSpace *space = cpSpaceNew();
+  assert_true(cpSpaceGetIterations(space) == 8, "cpSpace defaults to 8 solver iterations");
+  cpSpaceFree(space);
+
   assert_true(cpVersionString != NULL, "cpVersionString is exposed");
   assert_true(strlen(cpVersionString) > 0u, "cpVersionString is not empty");
 

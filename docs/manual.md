@@ -1349,7 +1349,8 @@ too many iterations, the physics should look nice and solid, but may use up too
 much CPU time. If you use too few iterations, the simulation may seem mushy or
 bouncy when the objects should be solid. Setting the number of iterations lets
 you balance between CPU usage and the accuracy of the physics. Chipmunk's
-default of 10 iterations is sufficient for most simple games.
+default of 8 iterations is sufficient for most simple games. Applications that
+need stiffer stacks or constraints can raise the iteration count explicitly.
 
 ### Sleeping {#cpSpace-Sleeping}
 

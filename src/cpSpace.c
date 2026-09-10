@@ -94,7 +94,7 @@ cpSpaceInit(cpSpace *space)
 	}
 #endif
 
-	space->iterations = 10;
+	space->iterations = 8;
 	
 	space->gravity = cpvzero;
 	space->damping = 1.0f;
