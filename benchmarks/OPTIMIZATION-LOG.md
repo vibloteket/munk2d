@@ -54,6 +54,15 @@ baseline/candidate measurements. Check this file before repeating an experiment.
 | Explicit impulse helper expansion | Helped callback/sleep cases, neutral or negative elsewhere. |
 | Separate static-body solver selected per arbiter | Callback/SleepWake improved about 7.5%, but dynamic-only contact workloads regressed 1–2%. |
 | Cache body solver state locally per arbiter | Realistic friction/callback/sleep scenarios regressed 2–4%. |
+| Frictionless solver ignoring `surface_velocity` | Benchmarks improved up to 1.1%, but a sloped non-zero-surface-velocity control changed floating-point results. |
+| Frictionless static-body specialized loops | Static-contact cases improved 3–8%, but dynamic-only cases paid dispatch/code-size overhead; no general win. |
+| Explicit cached body type field | SleepWake/AddPair/N2 improved 1–2%, FrictionalPyramid/FallingSquares regressed about 0.6%. |
+| Inline internal body-type derivation | SleepWake/MostlyStatic improved about 1%, Diagonal and other cases regressed or were noisy. |
+| Split bias and velocity solver passes | Frictional workloads regressed 2–5%. |
+| Zero-friction/zero-elasticity pre-step loop | Several zero-material cases improved 0.5–1.3%, FrictionalPyramid regressed about 0.25%. |
+| Exact tangent-mass dot-product identity | Several cases improved below 1%, FrictionalPyramid remained about 0.2% slower after 50 rounds. |
+| Filter cached-impulse calls in caller | Neutral. |
+| Directly unroll two-contact persistence matching | Neutral. |
 
 ## Rejected: collision, callbacks, and shape updates
 
@@ -80,6 +89,8 @@ baseline/candidate measurements. Check this file before repeating an experiment.
 | Three-point EPA loop removal preserving comparison order | Exact, but no measurable gain after compilation. |
 | Two-at-a-time polygon support scan | Callback/sleep improved, FallingSquares/Tumbler regressed 1–2%. |
 | Pair-kind switch replacing support function pointer | Broad regressions around 0.2–2%; indirect call was better predicted. |
+| Direct scalar bounce projection | Neutral. |
+| Zero-surface-velocity fast path in arbiter update | Neutral/mixed; branch cost matched saved projection work. |
 
 ## Benchmark and CI changes
 
