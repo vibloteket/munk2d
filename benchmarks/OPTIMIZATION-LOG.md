@@ -22,6 +22,7 @@ quality/performance tradeoffs require explicit approval before implementation.
 | GJK | Start polygon support scan at vertex 1 | Polygon-heavy workloads about -0.3% to -0.9% | [#16](https://github.com/vibloteket/munk2d/pull/16) |
 | GJK/EPA | Dispatch support points by shape pair | Polygon/contact workloads about -1% to -2% | [#17](https://github.com/vibloteket/munk2d/pull/17) |
 | GJK/EPA | Pair-specific cached support lookup | Relevant GJK workloads about -0.4% to -1.0% | [#20](https://github.com/vibloteket/munk2d/pull/20) |
+| BBTree (next major) | Dense leaf array for sequential iteration while retaining hash lookup | AddPair -2.7%, SlowExplosion -4.6%, Multifixture -1.7%; neutral to about -0.6% elsewhere | — |
 
 ## Rejected: BBTree
 
@@ -30,7 +31,7 @@ quality/performance tradeoffs require explicit approval before implementation.
 | Global fat-AABB coefficient sweep | Large sparse-world wins, but AddPair/Diagonal/Multifixture regressed up to 10–70%; trajectories changed. |
 | Velocity-only adaptive fat AABB | SlowExplosion -26%, but dense scenes regressed badly; trajectories changed. |
 | Initial traversal stack size 16/32/64/128 | Mostly within 1%; current 64 retained. |
-| Contiguous leaf list | AddPair/SlowExplosion improved 2–3%, but changed iteration order and validation trajectories. |
+| Contiguous leaf list (strict 2.x validation) | AddPair/SlowExplosion improved 2–3%, but changed deterministic iteration order and validation trajectories. Revisited for the next major release below. |
 | Cache area in every node | Diagonal/SlowExplosion improved 1–2%, MixedStaticDynamic regressed and nodes grew. |
 | Manual `MarkLeafQuery` intersection | Neutral; Diagonal regressed about 1%. |
 | Stop ancestor updates when bounds already contain leaf | Small/noisy; no general win. |
