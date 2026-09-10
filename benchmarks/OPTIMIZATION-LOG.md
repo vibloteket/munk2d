@@ -54,6 +54,15 @@ baseline/candidate measurements. Check this file before repeating an experiment.
 | Explicit impulse helper expansion | Helped callback/sleep cases, neutral or negative elsewhere. |
 | Separate static-body solver selected per arbiter | Callback/SleepWake improved about 7.5%, but dynamic-only contact workloads regressed 1–2%. |
 | Cache body solver state locally per arbiter | Realistic friction/callback/sleep scenarios regressed 2–4%. |
+| Frictionless solver omitting `surface_velocity` | Old 16-scenario summary improved 0.3–1.1%, but a sloped non-zero-surface control changed floating-point results. |
+| Frictionless static-body specialized loops | Static-contact cases improved 1–8%, but dynamic-only cases paid dispatch/code-size overhead. |
+| Explicit cached body type field | SleepWake/AddPair/N2 improved 1–2%, FrictionalPyramid/FallingSquares regressed about 0.6%. |
+| Inline internal body type helper | SleepWake/MostlyStatic improved about 1%, Diagonal and non-contact cases mixed. |
+| Split bias and velocity solver loops | FrictionalPyramid/Callbacks/SleepWake regressed 2–5%. |
+| Combined zero-friction/zero-elasticity pre-step path | Zero-material cases improved below 1.3%, FrictionalPyramid regressed. |
+| Exact tangent-mass dot identity | Several cases improved below 1%, FrictionalPyramid remained slower after 50 rounds. |
+| Filter first-contact cached-impulse calls in caller | Neutral. |
+| Unroll max-two contact persistence matching | Neutral. |
 
 ## Rejected: collision, callbacks, and shape updates
 
@@ -80,6 +89,9 @@ baseline/candidate measurements. Check this file before repeating an experiment.
 | Three-point EPA loop removal preserving comparison order | Exact, but no measurable gain after compilation. |
 | Two-at-a-time polygon support scan | Callback/sleep improved, FallingSquares/Tumbler regressed 1–2%. |
 | Pair-kind switch replacing support function pointer | Broad regressions around 0.2–2%; indirect call was better predicted. |
+| Direct bounce normal projection | Neutral. |
+| Zero-surface-velocity fast path in arbiter update | Neutral; branch cost matched saved projection work. |
+| Constraint-list null guard in broad-phase rejection | Neutral. |
 
 ## Benchmark and CI changes
 
