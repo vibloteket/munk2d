@@ -110,6 +110,8 @@ quality/performance tradeoffs require explicit approval before implementation.
 | Iterative EPA with fixed/shallow hull buffers | Byte-exact and callbacks improved about 0.5%, but Multifixture regressed 1.2% and MostlyStatic 0.4%. |
 | Two-at-a-time polygon support scan | Callback/sleep improved, FallingSquares/Tumbler regressed 1–2%. |
 | Pair-kind switch replacing support function pointer | Broad regressions around 0.2–2%; indirect call was better predicted. |
+| Iterative GJK loop | Byte-exact; friction/surface cases improved 0.3–0.6%, but AddPair regressed 0.5% and Multifixture 1.3%. |
+| Explicit cached collision-ID unpack | Byte-exact and callbacks improved slightly, but Multifixture regressed about 0.8%; compiler already optimized shifts. |
 | Direct scalar bounce projection | Neutral. |
 | Zero-surface-velocity fast path in arbiter update | Neutral/mixed; branch cost matched saved projection work. |
 | Pass contact clipping structs by const pointer | Byte-exact, but neutral/mixed; explicit edge temporaries did not reduce generated-code cost. |
