@@ -436,9 +436,69 @@ cpArbiterApplyImpulseFrictionless(cpArbiter *arb)
 	}
 }
 
+static void
+cpArbiterApplyImpulseStatic(cpArbiter *arb, cpBool staticA)
+{
+	cpBody *a = arb->body_a;
+	cpBody *b = arb->body_b;
+	cpBody *dynamic = staticA ? b : a;
+	cpVect n = arb->n;
+	cpVect surface_vr = arb->surface_vr;
+	cpFloat friction = arb->u;
+
+	for(int i=0; i<arb->count; i++){
+		struct cpContact *con = &arb->contacts[i];
+		cpFloat nMass = con->nMass;
+		cpVect r1 = con->r1;
+		cpVect r2 = con->r2;
+
+		cpVect vb1 = cpvadd(a->v_bias, cpvmult(cpvperp(r1), a->w_bias));
+		cpVect vb2 = cpvadd(b->v_bias, cpvmult(cpvperp(r2), b->w_bias));
+		cpVect vr = cpvadd(relative_velocity(a, b, r1, r2), surface_vr);
+		cpFloat vbn = cpvdot(cpvsub(vb2, vb1), n);
+		cpFloat vrn = cpvdot(vr, n);
+
+		cpFloat jbn = (con->bias - vbn)*nMass;
+		cpFloat jbnOld = con->jBias;
+		con->jBias = cpfmax(jbnOld + jbn, 0.0f);
+		cpFloat jn = -(con->bounce + vrn)*nMass;
+		cpFloat jnOld = con->jnAcc;
+		con->jnAcc = cpfmax(jnOld + jn, 0.0f);
+
+		cpVect jb = cpvmult(n, con->jBias - jbnOld);
+		cpVect j;
+		if(friction == 0.0f){
+			j = cpvmult(n, con->jnAcc - jnOld);
+		} else {
+			cpFloat vrt = cpvdot(vr, cpvperp(n));
+			cpFloat jtMax = friction*con->jnAcc;
+			cpFloat jt = -vrt*con->tMass;
+			cpFloat jtOld = con->jtAcc;
+			con->jtAcc = cpfclamp(jtOld + jt, -jtMax, jtMax);
+			j = cpvrotate(n, cpv(con->jnAcc - jnOld, con->jtAcc - jtOld));
+		}
+
+		if(staticA){
+			apply_bias_impulse(dynamic, jb, r2);
+			apply_impulse(dynamic, j, r2);
+		} else {
+			apply_bias_impulse(dynamic, cpvneg(jb), r1);
+			apply_impulse(dynamic, cpvneg(j), r1);
+		}
+	}
+}
+
 void
 cpArbiterApplyImpulse(cpArbiter *arb)
 {
+	cpBody *bodyA = arb->body_a;
+	cpBody *bodyB = arb->body_b;
+	cpBool staticA = (bodyA->m_inv == 0.0f && bodyA->i_inv == 0.0f);
+	cpBool staticB = (bodyB->m_inv == 0.0f && bodyB->i_inv == 0.0f);
+	if(staticA != staticB){
+		cpArbiterApplyImpulseStatic(arb, staticA);
+		return;
+	}
 	if(arb->u == 0.0f){
 		cpArbiterApplyImpulseFrictionless(arb);
 		return;

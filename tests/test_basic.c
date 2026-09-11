@@ -94,6 +94,36 @@ test_cpbbsegmentquery(void)
 }
 
 static void
+test_kinematic_collision_velocity(void)
+{
+  cpSpace *space = cpSpaceNew();
+  cpSpaceSetGravity(space, cpvzero);
+
+  cpBody *kinematic = cpBodyNewKinematic();
+  cpBodySetVelocity(kinematic, cpv(5.0, 0.0));
+  cpBodySetPosition(kinematic, cpv(-1.0, 0.0));
+  cpShape *kinematic_shape = cpCircleShapeNew(kinematic, 1.0, cpvzero);
+  cpSpaceAddBody(space, kinematic);
+  cpSpaceAddShape(space, kinematic_shape);
+
+  cpBody *dynamic = cpBodyNew(1.0, cpMomentForCircle(1.0, 0.0, 1.0, cpvzero));
+  cpBodySetPosition(dynamic, cpv(1.0, 0.0));
+  cpShape *dynamic_shape = cpCircleShapeNew(dynamic, 1.0, cpvzero);
+  cpSpaceAddBody(space, dynamic);
+  cpSpaceAddShape(space, dynamic_shape);
+
+  cpSpaceStep(space, 1.0/60.0);
+  assert_vect_near(cpBodyGetVelocity(kinematic), cpv(5.0, 0.0), 0.0, "collision impulses do not modify kinematic velocity");
+  assert_true(cpBodyGetVelocity(dynamic).x > 0.0, "kinematic velocity contributes to the dynamic body's collision response");
+
+  cpSpaceFree(space);
+  cpShapeFree(kinematic_shape);
+  cpShapeFree(dynamic_shape);
+  cpBodyFree(kinematic);
+  cpBodyFree(dynamic);
+}
+
+static void
 test_core_library_functions(void)
 {
   assert_true(cpVersionString != NULL, "cpVersionString is exposed");
@@ -118,6 +148,7 @@ main(void)
 {
   test_cpvslerp();
   test_cpbbsegmentquery();
+  test_kinematic_collision_velocity();
   test_core_library_functions();
 
   if(failures != 0) {

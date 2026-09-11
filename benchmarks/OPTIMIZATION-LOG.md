@@ -23,7 +23,8 @@ quality/performance tradeoffs require explicit approval before implementation.
 | GJK/EPA | Dispatch support points by shape pair | Polygon/contact workloads about -1% to -2% | [#17](https://github.com/vibloteket/munk2d/pull/17) |
 | GJK/EPA | Pair-specific cached support lookup | Relevant GJK workloads about -0.4% to -1.0% | [#20](https://github.com/vibloteket/munk2d/pull/20) |
 | BBTree (next major) | Dense leaf array for sequential iteration while retaining hash lookup | AddPair -2.7%, SlowExplosion -4.6%, Multifixture -1.7%; neutral to about -0.6% elsewhere | [#32](https://github.com/vibloteket/munk2d/pull/32) |
-| Hash set (next major) | Intrusive active-bin list for filtering without scanning empty buckets | AddPair/MostlyStatic/SleepWake -4% to -5%; N2 -5%; neutral to about -1.5% elsewhere | — |
+| Hash set (next major) | Intrusive active-bin list for filtering without scanning empty buckets | AddPair/MostlyStatic/SleepWake -4% to -5%; N2 -5%; neutral to about -1.5% elsewhere | [#33](https://github.com/vibloteket/munk2d/pull/33) |
+| Solver | Skip zero-effect impulse writes to a static/kinematic collision body | Static-contact workloads -3% to -10%; dynamic-only controls neutral | — |
 
 ## Rejected: BBTree
 
@@ -47,6 +48,8 @@ quality/performance tradeoffs require explicit approval before implementation.
 | Direct scalar vector expansion | Changed floating-point evaluation order and trajectories. |
 | `restrict` body/arbiter pointers | Mixed; FallingSquares regressed about 0.7%. |
 | Cache arbiter array/count outside loops | Near neutral; no primary-workload win. |
+| Dense per-step arbiter solver headers | Contact-heavy zero-friction cases improved 0.7–1.0%, but header build/dispatch regressed N2/MostlyStatic/SurfaceVelocity 0.7–1.2%. |
+| Partition active arbiters by friction before solving | AddPair improved 2%, but partition build/two loops regressed MostlyStatic 1.2% and MixedStaticDynamic/Multifixture 0.5–0.6%. |
 | Force contact-loop unrolling | Small mixed changes; FallingSquares did not improve. |
 | Explicit one-/two-contact solver paths | One-contact cases improved, FallingSquares regressed 0.3–0.6%. |
 | Cache tangent / hoist `cpvperp(n)` | Compiler already did the useful work; neutral. |
