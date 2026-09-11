@@ -106,6 +106,8 @@ quality/performance tradeoffs require explicit approval before implementation.
 | Scalar rewrite of `ClosestDist` | Neutral/mixed. |
 | Two-vertices-per-iteration polygon support scan | Callback/sleep improved, but FallingSquares +1.1% and Tumbler +2.0%. |
 | Three-point EPA loop removal preserving comparison order | Exact, but no measurable gain after compilation. |
+| Cache surviving EPA edge distances | Byte-exact, but shallow EPA made reuse lookup costlier; FallingSquares/AddPair regressed about 0.3–0.4%. |
+| Iterative EPA with fixed/shallow hull buffers | Byte-exact and callbacks improved about 0.5%, but Multifixture regressed 1.2% and MostlyStatic 0.4%. |
 | Two-at-a-time polygon support scan | Callback/sleep improved, FallingSquares/Tumbler regressed 1–2%. |
 | Pair-kind switch replacing support function pointer | Broad regressions around 0.2–2%; indirect call was better predicted. |
 | Direct scalar bounce projection | Neutral. |
