@@ -46,12 +46,12 @@ jobs:
             local benchmark="$1"
             local checkpoints="$2"
             shift 2
-            "$MUNKBENCH" --summary-json -b "$benchmark" --checkpoints "$checkpoints" "$@" \
+            "$MUNKBENCH" --profile smoke --summary-json -b "$benchmark" --checkpoints "$checkpoints" "$@" \
               > "$SUMMARY_DIR/$benchmark.json"
           }
 
           # Degenerate scenes become intentionally expensive after their first step.
-          # MixedStaticDynamic uses a reduced smoke size; timing benchmarks still use size_start.
+          # MixedStaticDynamic uses its reduced smoke-profile size.
           run_smoke FallingSquares 0,1,10,50
           run_smoke FallingCircles 0,1,10,50
           run_smoke Tumbler 0,1,10,50
@@ -168,7 +168,7 @@ jobs:
             step=${STEPS[$bench]}
             out="$SVG_DIR/${bench}_smoke.svg"
             echo "Rendering $bench smoke snapshot (size $size, step $step) ..."
-            "$MUNKBENCH" -b "$bench" -s "$size" --svg "$out" --step "$step"
+            "$MUNKBENCH" --profile smoke -b "$bench" -s "$size" --svg "$out" --step "$step"
             grep -q '<svg' "$out"
             grep -q '</svg>' "$out"
           done
@@ -234,23 +234,24 @@ jobs:
               > "$SUMMARY_DIR/$benchmark.json"
           }
 
-          run_smoke FallingSquares 0,1,10,50
-          run_smoke FallingCircles 0,1,10,50
-          run_smoke Tumbler 0,1,10,50
-          run_smoke AddPair 0,1,10,50
-          run_smoke MildN2 0,1
-          run_smoke N2 0,1,10,50
-          run_smoke Multifixture 0,1
-          run_smoke MostlyStaticSingleBody 0,1,10,25
-          run_smoke MostlyStaticMultiBody 0,1,10,50
-          run_smoke Diagonal 0,1,10,50
+          # The base revision can predate --profile, so pass every smoke size explicitly.
+          run_smoke FallingSquares 0,1,10,50 -s 10
+          run_smoke FallingCircles 0,1,10,50 -s 10
+          run_smoke Tumbler 0,1,10,50 -s 50
+          run_smoke AddPair 0,1,10,50 -s 100
+          run_smoke MildN2 0,1 -s 10
+          run_smoke N2 0,1,10,50 -s 25
+          run_smoke Multifixture 0,1 -s 5
+          run_smoke MostlyStaticSingleBody 0,1,10,25 -s 10
+          run_smoke MostlyStaticMultiBody 0,1,10,50 -s 10
+          run_smoke Diagonal 0,1,10,50 -s 2
           run_smoke MixedStaticDynamic 0,1,10,50 -s 1
-          run_smoke BigMobile 0,1,10,50
-          run_smoke SlowExplosion 0,1,10,50
-          run_smoke FrictionalPyramid 0,1,10,50
-          run_smoke CollisionCallbacks 0,1,10,50
-          run_smoke SleepWake 0,1,10,50,180,181,420
-          run_smoke SurfaceVelocity 0,1,10,50
+          run_smoke BigMobile 0,1,10,50 -s 1
+          run_smoke SlowExplosion 0,1,10,50 -s 100
+          run_smoke FrictionalPyramid 0,1,10,50 -s 8
+          run_smoke CollisionCallbacks 0,1,10,50 -s 24
+          run_smoke SleepWake 0,1,10,50,180,181,420 -s 20
+          run_smoke SurfaceVelocity 0,1,10,50 -s 24
 
           jq -s '{version: .[0].version, benchmarks: map(.benchmarks[]) }' \
             "$SUMMARY_DIR"/*.json > "${{ runner.temp }}/munkbench-base-summary.json"
@@ -335,7 +336,7 @@ jobs:
           mkdir -p "$SVG_DIR"
           MUNKBENCH="${{ github.workspace }}/build-munkbench/benchmarks/munkbench"
 
-          # Benchmark name -> {steps, size_start} (from munkbench.c benchmark table)
+          # Benchmark name -> {steps, smoke_size} (from munkbench.c benchmark table)
           declare -A STEPS=(
             [FallingSquares]=1300
             [FallingCircles]=1300
@@ -391,7 +392,7 @@ jobs:
               esac
               out="$SVG_DIR/${bench}_${label}.svg"
               echo "Rendering $bench $label (size $size, step $step / $steps) ..."
-              "$MUNKBENCH" -b "$bench" -s "$size" --svg "$out" --step "$step"
+              "$MUNKBENCH" --profile smoke -b "$bench" -s "$size" --svg "$out" --step "$step"
               grep -q '<svg' "$out"
               grep -q '</svg>' "$out"
             done

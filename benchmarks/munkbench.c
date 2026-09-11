@@ -51,11 +51,13 @@ typedef void (*BenchmarkPrintMetricsFunc)(void *state);
 struct Benchmark {
 	const char *name;
 	int steps;
-	int default_size;
-	int size_start;
+	int extended_size;
+	int smoke_size;
+	int reference_size;
 	int size_end;
 	int size_inc;
-	int calibrated_batch;
+	int smoke_batch;
+	int reference_batch;
 	BenchmarkInitFunc init;
 	BenchmarkUpdateFunc update;
 	BenchmarkDestroyStateFunc destroy_state;
@@ -81,6 +83,12 @@ typedef struct SleepWakeState {
 	int wake_step;
 } SleepWakeState;
 
+typedef enum BenchmarkProfile {
+	BENCHMARK_PROFILE_SMOKE,
+	BENCHMARK_PROFILE_REFERENCE,
+	BENCHMARK_PROFILE_EXTENDED,
+} BenchmarkProfile;
+
 typedef struct RunResult {
 	const char *benchmark;
 	int size;
@@ -100,10 +108,11 @@ static void
 usage(const char *argv0)
 {
 	printf("MunkBench - Munk2D benchmark suite\n\n");
-	printf("Usage: %s [-b benchmark ...] [-s size] [--warmup n --samples n --batch n] [--summary-json] [--svg file --step n]\n\n", argv0);
+	printf("Usage: %s [-b benchmark ...] [--profile smoke|reference|extended] [-s size] [--warmup n --samples n --batch n] [--summary-json] [--svg file --step n]\n\n", argv0);
 	printf("Options:\n");
 	printf("  -b, --benchmarks  Run only the named benchmarks.\n");
-	printf("  -s, --size        Size to run. Omit for each benchmark default; use -1 for size sweep.\n");
+	printf("  --profile NAME    Size profile: smoke, reference (default), or extended.\n");
+	printf("  -s, --size        Explicit size override; use -1 for a size sweep.\n");
 	printf("  --warmup n        Untimed independent runs before sampling. Default: 0.\n");
 	printf("  --samples n       Number of raw timing samples to emit. Default: 1.\n");
 	printf("  --batch n|auto    Independent simulations measured per sample. Default: 1.\n");
@@ -816,25 +825,25 @@ init_sleep_wake(int size, void **state)
 	return space;
 }
 
-// Calibrated batches target approximately 100 ms at size_start on the reference host.
+// Smoke and reference batches target practical sample durations on the reference host.
 static Benchmark benchmarks[] = {
-	{"FallingSquares", 1300, 300, 10, 300, 10, 1, init_falling_squares, default_update, NULL, NULL},
-	{"FallingCircles", 1300, 300, 10, 300, 10, 2, init_falling_circles, default_update, NULL, NULL},
-	{"Tumbler", 1500, 1000, 50, 1000, 50, 1, init_tumbler, tumbler_update, tumbler_destroy_state, NULL},
-	{"AddPair", 1000, 2000, 100, 2500, 100, 4, init_add_pair, add_pair_update, NULL, NULL},
-	{"MildN2", 100, 200, 10, 200, 10, 10, init_mild_n2, default_update, NULL, NULL},
-	{"N2", 100, 750, 25, 750, 25, 60, init_n2, default_update, NULL, NULL},
-	{"Multifixture", 500, 100, 5, 100, 5, 3, init_multifixture, default_update, NULL, NULL},
-	{"MostlyStaticSingleBody", 400, 200, 10, 200, 5, 160, init_mostly_static_single_body, default_update, NULL, NULL},
-	{"MostlyStaticMultiBody", 400, 200, 10, 200, 5, 160, init_mostly_static_multi_body, default_update, NULL, NULL},
-	{"Diagonal", 1000, 50, 2, 50, 2, 10, init_diagonal, default_update, NULL, NULL},
-	{"MixedStaticDynamic", 400, 6000, 100, 6000, 100, 7, init_mixed_static_dynamic, default_update, NULL, NULL},
-	{"BigMobile", 1000, 11, 1, 11, 1, 150, init_big_mobile, default_update, NULL, NULL},
-	{"SlowExplosion", 1000, 6000, 100, 6000, 100, 25, init_slow_explosion, default_update, NULL, NULL},
-	{"FrictionalPyramid", 900, 45, 8, 45, 1, 4, init_frictional_pyramid, default_update, NULL, NULL},
-	{"CollisionCallbacks", 600, 240, 24, 240, 12, 20, init_collision_callbacks, default_update, callback_destroy_state, callback_print_metrics},
-	{"SleepWake", 420, 200, 20, 200, 10, 200, init_sleep_wake, sleep_wake_update, sleep_wake_destroy_state, NULL},
-	{"SurfaceVelocity", 600, 240, 24, 240, 12, 20, init_surface_velocity, default_update, NULL, NULL},
+	{"FallingSquares", 1300, 300, 10, 50, 300, 10, 1, 1, init_falling_squares, default_update, NULL, NULL},
+	{"FallingCircles", 1300, 300, 10, 50, 300, 10, 2, 2, init_falling_circles, default_update, NULL, NULL},
+	{"Tumbler", 1500, 1000, 50, 250, 1000, 50, 1, 1, init_tumbler, tumbler_update, tumbler_destroy_state, NULL},
+	{"AddPair", 1000, 2000, 100, 500, 2500, 100, 4, 1, init_add_pair, add_pair_update, NULL, NULL},
+	{"MildN2", 100, 200, 10, 50, 200, 10, 10, 4, init_mild_n2, default_update, NULL, NULL},
+	{"N2", 100, 750, 25, 100, 750, 25, 60, 20, init_n2, default_update, NULL, NULL},
+	{"Multifixture", 500, 100, 5, 25, 100, 5, 3, 1, init_multifixture, default_update, NULL, NULL},
+	{"MostlyStaticSingleBody", 400, 200, 10, 50, 200, 5, 160, 80, init_mostly_static_single_body, default_update, NULL, NULL},
+	{"MostlyStaticMultiBody", 400, 200, 10, 50, 200, 5, 160, 80, init_mostly_static_multi_body, default_update, NULL, NULL},
+	{"Diagonal", 1000, 50, 2, 10, 50, 2, 10, 5, init_diagonal, default_update, NULL, NULL},
+	{"MixedStaticDynamic", 400, 6000, 100, 500, 6000, 100, 7, 5, init_mixed_static_dynamic, default_update, NULL, NULL},
+	{"BigMobile", 1000, 11, 1, 6, 11, 1, 150, 10, init_big_mobile, default_update, NULL, NULL},
+	{"SlowExplosion", 1000, 6000, 100, 1000, 6000, 100, 25, 10, init_slow_explosion, default_update, NULL, NULL},
+	{"FrictionalPyramid", 900, 45, 8, 16, 45, 1, 4, 4, init_frictional_pyramid, default_update, NULL, NULL},
+	{"CollisionCallbacks", 600, 240, 24, 60, 240, 12, 20, 20, init_collision_callbacks, default_update, callback_destroy_state, callback_print_metrics},
+	{"SleepWake", 420, 200, 20, 50, 200, 10, 200, 100, init_sleep_wake, sleep_wake_update, sleep_wake_destroy_state, NULL},
+	{"SurfaceVelocity", 600, 240, 24, 60, 240, 12, 20, 20, init_surface_velocity, default_update, NULL, NULL},
 };
 
 static int benchmark_count = (int)(sizeof(benchmarks)/sizeof(benchmarks[0]));
@@ -1329,6 +1338,28 @@ write_svg_snapshot(Benchmark *benchmark, int size, int step, const char *path)
 	if(benchmark->destroy_state) benchmark->destroy_state(state);
 }
 
+static int
+profile_size(const Benchmark *benchmark, BenchmarkProfile profile)
+{
+	switch(profile){
+		case BENCHMARK_PROFILE_SMOKE: return benchmark->smoke_size;
+		case BENCHMARK_PROFILE_REFERENCE: return benchmark->reference_size;
+		case BENCHMARK_PROFILE_EXTENDED: return benchmark->extended_size;
+	}
+	return benchmark->reference_size;
+}
+
+static int
+profile_batch(const Benchmark *benchmark, BenchmarkProfile profile)
+{
+	switch(profile){
+		case BENCHMARK_PROFILE_SMOKE: return benchmark->smoke_batch;
+		case BENCHMARK_PROFILE_REFERENCE: return benchmark->reference_batch;
+		case BENCHMARK_PROFILE_EXTENDED: return 1;
+	}
+	return benchmark->reference_batch;
+}
+
 static RunResult
 run_benchmark(Benchmark *benchmark, int size, int sample, int batch)
 {
@@ -1390,6 +1421,7 @@ main(int argc, char **argv)
 	int samples = 1;
 	int batch = 1;
 	int auto_batch = 0;
+	BenchmarkProfile profile = BENCHMARK_PROFILE_REFERENCE;
 	char **selected_names = NULL;
 	int selected_name_count = 0;
 
@@ -1412,6 +1444,19 @@ main(int argc, char **argv)
 					return 1;
 				}
 				selected_names[selected_name_count++] = argv[++i];
+			}
+		} else if(strcmp(argv[i], "--profile") == 0){
+			if(i + 1 >= argc){
+				fprintf(stderr, "Missing value for --profile.\n");
+				return 2;
+			}
+			const char *value = argv[++i];
+			if(strcmp(value, "smoke") == 0) profile = BENCHMARK_PROFILE_SMOKE;
+			else if(strcmp(value, "reference") == 0) profile = BENCHMARK_PROFILE_REFERENCE;
+			else if(strcmp(value, "extended") == 0) profile = BENCHMARK_PROFILE_EXTENDED;
+			else {
+				fprintf(stderr, "Invalid profile: %s. Use smoke, reference, or extended.\n", value);
+				return 2;
 			}
 		} else if(strcmp(argv[i], "--warmup") == 0 || strcmp(argv[i], "--samples") == 0 || strcmp(argv[i], "--batch") == 0){
 			const char *option = argv[i];
@@ -1479,7 +1524,7 @@ main(int argc, char **argv)
 		return 2;
 	}
 	if(auto_batch && size_arg_set){
-		fprintf(stderr, "--batch auto is calibrated only for default benchmark sizes; use an explicit batch with --size.\n");
+		fprintf(stderr, "--batch auto is calibrated only for named profiles; use an explicit batch with --size.\n");
 		free(selected_names);
 		return 2;
 	}
@@ -1496,7 +1541,7 @@ main(int argc, char **argv)
 			return 2;
 		}
 		Benchmark *benchmark = find_benchmark(selected_names[0]);
-		int size = size_arg_set ? size_arg : benchmark->size_start;
+		int size = size_arg_set ? size_arg : profile_size(benchmark, profile);
 		write_svg_snapshot(benchmark, size, svg_step, svg_path);
 		free(selected_names);
 		return 0;
@@ -1517,7 +1562,7 @@ main(int argc, char **argv)
 			Benchmark *benchmark = &benchmarks[i];
 			if(!name_selected(benchmark, selected_names, selected_name_count)) continue;
 			if(emitted++) printf(",");
-			int size = size_arg_set ? size_arg : benchmark->size_start;
+			int size = size_arg_set ? size_arg : profile_size(benchmark, profile);
 			run_summary_json(benchmark, size, checkpoints, checkpoint_count, max_checkpoints);
 		}
 		printf("]}\n");
@@ -1530,13 +1575,13 @@ main(int argc, char **argv)
 		Benchmark *benchmark = &benchmarks[i];
 		if(!name_selected(benchmark, selected_names, selected_name_count)) continue;
 
-		int benchmark_batch = auto_batch ? benchmark->calibrated_batch : batch;
+		int benchmark_batch = auto_batch ? profile_batch(benchmark, profile) : batch;
 		if(!size_arg_set){
-			run_timing_samples(benchmark, benchmark->size_start, warmup, samples, benchmark_batch);
+			run_timing_samples(benchmark, profile_size(benchmark, profile), warmup, samples, benchmark_batch);
 		} else if(size_arg == -1){
-			int step = (benchmark->size_end + 1 - benchmark->size_start)/11;
+			int step = (benchmark->size_end + 1 - benchmark->smoke_size)/11;
 			if(step <= 0) step = benchmark->size_inc;
-			for(int size = benchmark->size_start; size <= benchmark->size_end; size += step){
+			for(int size = benchmark->smoke_size; size <= benchmark->size_end; size += step){
 				run_timing_samples(benchmark, size, warmup, samples, benchmark_batch);
 			}
 		} else {
