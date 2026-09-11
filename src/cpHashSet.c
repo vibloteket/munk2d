@@ -27,6 +27,7 @@ typedef struct cpHashSetBin {
 	void *elt;
 	cpHashValue hash;
 	struct cpHashSetBin *next;
+	struct cpHashSetBin *activePrev, *activeNext;
 } cpHashSetBin;
 
 struct cpHashSet {
@@ -37,6 +38,7 @@ struct cpHashSet {
 	
 	cpHashSetBin **table;
 	cpHashSetBin *pooledBins;
+	cpHashSetBin *activeBins;
 	
 	cpArray *allocatedBuffers;
 };
@@ -67,6 +69,7 @@ cpHashSetNew(int size, cpHashSetEqlFunc eqlFunc)
 	
 	set->table = (cpHashSetBin **)cpcalloc(set->size, sizeof(cpHashSetBin *));
 	set->pooledBins = NULL;
+	set->activeBins = NULL;
 	
 	set->allocatedBuffers = cpArrayNew(0);
 	
@@ -168,6 +171,10 @@ cpHashSetInsert(cpHashSet *set, cpHashValue hash, const void *ptr, cpHashSetTran
 		
 		bin->next = set->table[idx];
 		set->table[idx] = bin;
+		bin->activePrev = NULL;
+		bin->activeNext = set->activeBins;
+		if(set->activeBins) set->activeBins->activePrev = bin;
+		set->activeBins = bin;
 		
 		set->entries++;
 		if(setIsFull(set)) cpHashSetResize(set);
@@ -197,6 +204,9 @@ cpHashSetRemove(cpHashSet *set, cpHashValue hash, const void *ptr)
 		set->entries--;
 		
 		const void *elt = bin->elt;
+		if(bin->activePrev) bin->activePrev->activeNext = bin->activeNext;
+		else set->activeBins = bin->activeNext;
+		if(bin->activeNext) bin->activeNext->activePrev = bin->activePrev;
 		recycleBin(set, bin);
 		
 		return elt;
@@ -232,23 +242,21 @@ cpHashSetEach(cpHashSet *set, cpHashSetIteratorFunc func, void *data)
 void
 cpHashSetFilter(cpHashSet *set, cpHashSetFilterFunc func, void *data)
 {
-	for(unsigned int i=0; i<set->size; i++){
-		// The rest works similarly to cpHashSetRemove() above.
-		cpHashSetBin **prev_ptr = &set->table[i];
-		cpHashSetBin *bin = set->table[i];
-		while(bin){
-			cpHashSetBin *next = bin->next;
-			
-			if(func(bin->elt, data)){
-				prev_ptr = &bin->next;
-			} else {
-				(*prev_ptr) = next;
+	cpHashSetBin *bin = set->activeBins;
+	while(bin){
+		cpHashSetBin *nextActive = bin->activeNext;
+		if(!func(bin->elt, data)){
+			cpHashValue idx = bin->hash%set->size;
+			cpHashSetBin **prev = &set->table[idx];
+			while(*prev != bin) prev = &(*prev)->next;
+			*prev = bin->next;
 
-				set->entries--;
-				recycleBin(set, bin);
-			}
-			
-			bin = next;
+			if(bin->activePrev) bin->activePrev->activeNext = bin->activeNext;
+			else set->activeBins = bin->activeNext;
+			if(bin->activeNext) bin->activeNext->activePrev = bin->activePrev;
+			set->entries--;
+			recycleBin(set, bin);
 		}
+		bin = nextActive;
 	}
 }
