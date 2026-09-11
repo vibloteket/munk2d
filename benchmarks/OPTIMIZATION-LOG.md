@@ -106,6 +106,9 @@ quality/performance tradeoffs require explicit approval before implementation.
 | Pair-kind switch replacing support function pointer | Broad regressions around 0.2–2%; indirect call was better predicted. |
 | Direct scalar bounce projection | Neutral. |
 | Zero-surface-velocity fast path in arbiter update | Neutral/mixed; branch cost matched saved projection work. |
+| Pass contact clipping structs by const pointer | Byte-exact, but neutral/mixed; explicit edge temporaries did not reduce generated-code cost. |
+| Reuse edge radius offsets in contact clipping | Byte-exact, but neutral/mixed; Multifixture regressed about 0.4%. |
+| Reuse edge deltas in contact clipping | Tumbler improved 2.9%, but Multifixture/MostlyStatic regressed about 0.8–1.1%; rejected. |
 | Constraint-list null guard in broad-phase rejection | Neutral. |
 
 ## Benchmark and CI changes
