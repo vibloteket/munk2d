@@ -27,11 +27,23 @@ MunkBench should use the project's normal optimized build without experimental
 floating-point flags. Compiler flags such as `-ffast-math` can be evaluated
 separately once the benchmark baseline is stable.
 
-Run the default size for every benchmark:
+Run the representative reference size for every benchmark:
 
 ```sh
-./build/benchmarks/munkbench
+./build/benchmarks/munkbench --profile reference
 ```
+
+`reference` is the default profile. Use `smoke` for fast CI and setup-overhead
+checks, or `extended` for the original full-size workloads:
+
+```sh
+./build/benchmarks/munkbench --profile smoke
+./build/benchmarks/munkbench --profile extended
+```
+
+Optimization comparisons should measure both `smoke` and `reference`. Structural
+or algorithmic changes should additionally run relevant `extended` sizes or a
+size sweep.
 
 Run selected benchmarks:
 
@@ -46,11 +58,10 @@ Run a size sweep using each benchmark's configured range:
 ```
 
 For repeatable raw samples, add untimed warm-ups and use each benchmark's
-calibrated batch count. Current batch counts target roughly 100 ms per sample at
-the configured default size on the calibration host:
+calibrated batch count. Batch counts are calibrated separately for the `smoke` and `reference` profiles:
 
 ```sh
-./build/benchmarks/munkbench --warmup 2 --samples 10 --batch auto
+./build/benchmarks/munkbench --profile reference --warmup 2 --samples 10 --batch auto
 ```
 
 An explicit batch count is useful for focused experiments:
@@ -62,7 +73,7 @@ An explicit batch count is useful for focused experiments:
 Each batched run creates, simulates, and destroys a fresh independent world. The
 reported times are totals for the whole batch; divide by `batch` when a per-run
 value is needed. Scenario size and physics step count are unchanged. `auto` is
-calibrated for default sizes; use an explicit batch when running another size.
+calibrated for named profiles; use an explicit batch with `--size`.
 
 Output is CSV, with one row per raw sample:
 
@@ -135,8 +146,9 @@ bun benchmarks/tools/record-results.ts \
   --environment reference-server-v1
 ```
 
-Defaults are two warm-ups, ten samples, calibrated automatic batches, protocol
-`munkbench-v3`, and remote branch `origin/benchmark-data`. Version 2 adds
+Defaults are two warm-ups, ten samples, the `reference` profile with calibrated
+automatic batches, protocol `munkbench-v4`, and remote branch
+`origin/benchmark-data`. Version 2 adds
 non-zero-friction, collision-callback, and sleep/wake coverage. The working tree must
 be clean. Use `--dry-run --output run.json` to validate and inspect a record
 without committing or pushing it.
@@ -145,5 +157,5 @@ Recorded paths are organized by environment, protocol, year, timestamp, and
 commit. Changing the machine, compiler baseline, benchmark workload, or timing
 semantics should start a new environment or protocol series instead of silently
 continuing an incompatible graph. The current versioned format is documented by
-[`results-schema-v3.json`](results-schema-v3.json). The v1 and v2 schemas remain in the
+[`results-schema-v4.json`](results-schema-v4.json). Earlier schemas remain in the
 repository for historical 13-scenario records.

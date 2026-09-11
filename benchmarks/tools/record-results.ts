@@ -4,7 +4,7 @@
 import { mkdir, rm } from "node:fs/promises";
 import { basename, resolve } from "node:path";
 
-const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION = 4;
 const args = process.argv.slice(2);
 
 function option(name: string, fallback?: string): string | undefined {
@@ -20,7 +20,7 @@ function has(name: string): boolean {
 
 function usage(): never {
   console.error(
-    `Usage: bun benchmarks/tools/record-results.ts [options]\n\nOptions:\n  --revision REF       Revision to record (default: HEAD)\n  --environment ID     Stable environment series ID (default: hostname)\n  --protocol ID        Benchmark protocol ID (default: munkbench-v3)\n  --samples N          Raw samples per benchmark (default: 10)\n  --warmup N           Untimed warmups (default: 2)\n  --data-branch NAME   Results branch (default: benchmark-data)\n  --remote NAME        Git remote (default: origin)\n  --output PATH        Also copy generated run JSON to PATH\n  --dry-run            Generate and validate without committing/pushing\n`,
+    `Usage: bun benchmarks/tools/record-results.ts [options]\n\nOptions:\n  --revision REF       Revision to record (default: HEAD)\n  --environment ID     Stable environment series ID (default: hostname)\n  --protocol ID        Benchmark protocol ID (default: munkbench-v4)\n  --samples N          Raw samples per benchmark (default: 10)\n  --warmup N           Untimed warmups (default: 2)\n  --data-branch NAME   Results branch (default: benchmark-data)\n  --remote NAME        Git remote (default: origin)\n  --output PATH        Also copy generated run JSON to PATH\n  --dry-run            Generate and validate without committing/pushing\n`,
   );
   process.exit(2);
 }
@@ -29,7 +29,7 @@ if (has("--help") || has("-h")) usage();
 
 const revision = option("--revision", "HEAD")!;
 const environmentArg = option("--environment");
-const protocol = option("--protocol", "munkbench-v3")!;
+const protocol = option("--protocol", "munkbench-v4")!;
 const samples = Number(option("--samples", "10"));
 const warmup = Number(option("--warmup", "2"));
 const dataBranch = option("--data-branch", "benchmark-data")!;
@@ -105,7 +105,7 @@ const allowedDuringDryRun = [
   "benchmarks/BENCHMARKS-REFERENCE.md",
   "benchmarks/README.md",
   "benchmarks/munkbench.c",
-  "benchmarks/results-schema-v3.json",
+  "benchmarks/results-schema-v4.json",
   "benchmarks/tools",
 ];
 if (
@@ -181,7 +181,7 @@ try {
     process.platform === "win32" ? "munkbench.exe" : "munkbench",
   );
   const validationText = await run(
-    [executable, "--summary-json", "--checkpoints", "0,1,10,50,180,181"],
+    [executable, "--profile", "smoke", "--summary-json", "--checkpoints", "0,1,10,50,180,181"],
     sourceDir,
   );
   const validation = JSON.parse(validationText);
@@ -216,6 +216,8 @@ try {
       "-c",
       "0",
       executable,
+      "--profile",
+      "reference",
       "--warmup",
       String(warmup),
       "--samples",
@@ -280,6 +282,7 @@ try {
       samples,
       batch: "auto",
       cpu_affinity: "0",
+      profile: "reference",
     },
     validation: { passed: true, checkpoints: "0,1,10,50,180,181" },
     benchmarks,
