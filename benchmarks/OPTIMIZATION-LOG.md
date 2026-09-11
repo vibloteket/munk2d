@@ -112,6 +112,8 @@ quality/performance tradeoffs require explicit approval before implementation.
 | Pair-kind switch replacing support function pointer | Broad regressions around 0.2–2%; indirect call was better predicted. |
 | Iterative GJK loop | Byte-exact; friction/surface cases improved 0.3–0.6%, but AddPair regressed 0.5% and Multifixture 1.3%. |
 | Explicit cached collision-ID unpack | Byte-exact and callbacks improved slightly, but Multifixture regressed about 0.8%; compiler already optimized shifts. |
+| Reuse final GJK support indexes for clipping edge | Full/segment-only variants improved contact workloads about 1%, but Multifixture regressed 0.6–0.9% in focused runs. |
+| Hoist duplicate contact-distance guard to clipping callers | Byte-exact and small contact wins, but Multifixture regressed 1.1%. |
 | Direct scalar bounce projection | Neutral. |
 | Zero-surface-velocity fast path in arbiter update | Neutral/mixed; branch cost matched saved projection work. |
 | Pass contact clipping structs by const pointer | Byte-exact, but neutral/mixed; explicit edge temporaries did not reduce generated-code cost. |
