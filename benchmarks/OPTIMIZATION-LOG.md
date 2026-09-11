@@ -22,7 +22,8 @@ quality/performance tradeoffs require explicit approval before implementation.
 | GJK | Start polygon support scan at vertex 1 | Polygon-heavy workloads about -0.3% to -0.9% | [#16](https://github.com/vibloteket/munk2d/pull/16) |
 | GJK/EPA | Dispatch support points by shape pair | Polygon/contact workloads about -1% to -2% | [#17](https://github.com/vibloteket/munk2d/pull/17) |
 | GJK/EPA | Pair-specific cached support lookup | Relevant GJK workloads about -0.4% to -1.0% | [#20](https://github.com/vibloteket/munk2d/pull/20) |
-| BBTree (next major) | Dense leaf array for sequential iteration while retaining hash lookup | AddPair -2.7%, SlowExplosion -4.6%, Multifixture -1.7%; neutral to about -0.6% elsewhere | — |
+| BBTree (next major) | Dense leaf array for sequential iteration while retaining hash lookup | AddPair -2.7%, SlowExplosion -4.6%, Multifixture -1.7%; neutral to about -0.6% elsewhere | [#32](https://github.com/vibloteket/munk2d/pull/32) |
+| Hash set (next major) | Intrusive active-bin list for filtering without scanning empty buckets | AddPair/MostlyStatic/SleepWake -4% to -5%; N2 -5%; neutral to about -1.5% elsewhere | — |
 
 ## Rejected: BBTree
 
@@ -60,6 +61,7 @@ quality/performance tradeoffs require explicit approval before implementation.
 | Explicit impulse helper expansion | Helped callback/sleep cases, neutral or negative elsewhere. |
 | Frictionless solver omitting `surface_velocity` | Improved zero-friction cases about 0.3–1.1% and was neutral in SurfaceVelocity, but a sloped control changed floating-point results. |
 | Early-stop generic hash filtering after visiting all entries | SleepWake -1.7% once, but scaling was neutral/slower; rejected. |
+| Dense cached-arbiter list for sequential filtering | SleepWake/AddPair improved 3–4%, but Multifixture regressed 1.1% and SlowExplosion about 1%; duplicate array/hash maintenance was workload-dependent. |
 | Directly unroll max-two contact persistence matching | Neutral. |
 | Separate static-body solver selected per arbiter | Callback/SleepWake improved about 7.5%, but dynamic-only contact workloads regressed 1–2%. |
 | Cache body solver state locally per arbiter | Realistic friction/callback/sleep scenarios regressed 2–4%. |
