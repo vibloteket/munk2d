@@ -1,0 +1,103 @@
+{
+  "protocol": "munkbench-v5",
+  "description": "Cross-version behavior envelope with isolated and mixed built-in constraint coverage.",
+  "exact_integer_metrics": [
+    "bodies",
+    "dynamic_bodies",
+    "static_bodies",
+    "kinematic_bodies",
+    "shapes",
+    "constraints"
+  ],
+  "finite_metrics": [
+    "total_mass",
+    "total_kinetic_energy",
+    "max_linear_velocity",
+    "max_angular_velocity"
+  ],
+  "limits": {
+    "max_linear_velocity": 100000000,
+    "max_angular_velocity": 100000000,
+    "aggregate_relative": 0.25,
+    "aggregate_absolute_per_body": 2,
+    "bounds_relative": 0.35,
+    "bounds_absolute": 5,
+    "contact_relative": 0.5,
+    "contact_absolute": 8,
+    "energy_ratio": 4,
+    "energy_absolute": 1,
+    "max_velocity_ratio": 3,
+    "max_velocity_absolute": 1
+  },
+  "scenario_invariants": {
+    "FrictionalPyramid": {
+      "final_contact_pairs_min": 1
+    },
+    "CollisionCallbacks": {
+      "begin_count_min": 1,
+      "pre_solve_count_min": 1,
+      "post_solve_count_min": 1,
+      "wildcard_count_min": 1,
+      "pre_solve_greater_than_post_solve": true
+    },
+    "SleepWake": {
+      "sleeping_bodies_min_at_step": {
+        "step": 50,
+        "value": 1
+      },
+      "sleeping_bodies_decrease": {
+        "before": 180,
+        "after": 181
+      }
+    },
+    "SlideConstraints": {
+      "constraint_kind": 0,
+      "max_error_max": 0.001
+    },
+    "PivotConstraints": {
+      "constraint_kind": 1,
+      "max_error_max": 0.001
+    },
+    "GrooveConstraints": {
+      "constraint_kind": 2,
+      "max_error_max": 0.01
+    },
+    "GearConstraints": {
+      "constraint_kind": 3,
+      "max_error_max": 1e-8
+    },
+    "RatchetConstraints": {
+      "constraint_kind": 4,
+      "max_error_max": 0.393
+    },
+    "RotaryLimitConstraints": {
+      "constraint_kind": 5,
+      "max_error_max": 0.001
+    },
+    "DampedSpringConstraints": {
+      "constraint_kind": 6,
+      "max_error_max": 0.005
+    },
+    "DampedRotarySpringConstraints": {
+      "constraint_kind": 7,
+      "max_error_max": 0.005
+    },
+    "ConstraintMix": {
+      "type_count": 10,
+      "per_type_count_min": 1,
+      "max_error_max": [
+        0.1,
+        0.75,
+        0.1,
+        0.00001,
+        0.5,
+        0.05,
+        1,
+        1.5,
+        0.2,
+        1e-8
+      ],
+      "require_wake_transition": true
+    }
+  }
+}
