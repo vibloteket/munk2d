@@ -93,6 +93,8 @@ quality/performance tradeoffs require explicit approval before implementation.
 | Hash comparison before equality callback | Neutral overall. |
 | Initialize polygon AABB from first vertex | Multifixture about -1.4%, otherwise neutral/noisy. |
 | Four-vertex polygon cache-data loop | Multifixture -3.4%, but MostlyStatic regressed 0.6–0.7%. |
+| Reuse cached polygon normals for unchanged rigid rotation | Byte-exact and Multifixture -1.8–2.3%, but CollisionCallbacks/SurfaceVelocity regressed 0.35–0.39%. |
+| Split polygon vertex/bounds and normal transform loops | Byte-exact but neutral/mixed; N2/MostlyStatic regressed about 0.2–0.4%. |
 | Zero-elasticity bounce fast path | Neutral overall. |
 
 ## Rejected: GJK/EPA
