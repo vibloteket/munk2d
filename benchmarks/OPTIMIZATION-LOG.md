@@ -33,6 +33,9 @@ quality/performance tradeoffs require explicit approval before implementation.
 | Velocity-only adaptive fat AABB | SlowExplosion -26%, but dense scenes regressed badly; trajectories changed. |
 | Initial traversal stack size 16/32/64/128 | Mostly within 1%; current 64 retained. |
 | Contiguous leaf list (strict 2.x validation) | AddPair/SlowExplosion improved 2–3%, but changed deterministic iteration order and validation trajectories. Revisited for the next major release below. |
+| Direct leaf-array pair marking | Removed internal-node traversal, but changed contact order too much: MildN2 energy/contact counts exceeded the v4 behavior envelope. |
+| Reuse one BBTree query stack per marking pass | Byte-exact and improved Diagonal/SlowExplosion, but repeated broad runs regressed MixedStaticDynamic/FrictionalPyramid about 0.3–0.4%. |
+| Cache master-tree stamp in marking context | Byte-exact and SlowExplosion -1.2%, but AddPair +1.5%, N2 +0.5%, and MostlyStatic +1.2%. |
 | Cache area in every node | Diagonal/SlowExplosion improved 1–2%, MixedStaticDynamic regressed and nodes grew. |
 | Manual `MarkLeafQuery` intersection | Neutral; Diagonal regressed about 1%. |
 | Stop ancestor updates when bounds already contain leaf | Small/noisy; no general win. |
@@ -62,6 +65,7 @@ quality/performance tradeoffs require explicit approval before implementation.
 | Frictionless solver omitting `surface_velocity` | Improved zero-friction cases about 0.3–1.1% and was neutral in SurfaceVelocity, but a sloped control changed floating-point results. |
 | Early-stop generic hash filtering after visiting all entries | SleepWake -1.7% once, but scaling was neutral/slower; rejected. |
 | Dense cached-arbiter list for sequential filtering | SleepWake/AddPair improved 3–4%, but Multifixture regressed 1.1% and SlowExplosion about 1%; duplicate array/hash maintenance was workload-dependent. |
+| O(1) bucket unlink during active-bin filtering | Added a bucket backpointer, but larger bins caused broad 0.1–0.7% regressions; removal chains were already short. |
 | Directly unroll max-two contact persistence matching | Neutral. |
 | Separate static-body solver selected per arbiter | Callback/SleepWake improved about 7.5%, but dynamic-only contact workloads regressed 1–2%. |
 | Cache body solver state locally per arbiter | Realistic friction/callback/sleep scenarios regressed 2–4%. |
