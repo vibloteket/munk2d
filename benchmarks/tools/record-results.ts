@@ -4,7 +4,7 @@
 import { mkdir, rm } from "node:fs/promises";
 import { basename, resolve } from "node:path";
 
-const SCHEMA_VERSION = 4;
+const SCHEMA_VERSION = 5;
 const args = process.argv.slice(2);
 
 function option(name: string, fallback?: string): string | undefined {
@@ -20,7 +20,7 @@ function has(name: string): boolean {
 
 function usage(): never {
   console.error(
-    `Usage: bun benchmarks/tools/record-results.ts [options]\n\nOptions:\n  --revision REF       Revision to record (default: HEAD)\n  --environment ID     Stable environment series ID (default: hostname)\n  --protocol ID        Benchmark protocol ID (default: munkbench-v4)\n  --samples N          Raw samples per benchmark (default: 10)\n  --warmup N           Untimed warmups (default: 2)\n  --data-branch NAME   Results branch (default: benchmark-data)\n  --remote NAME        Git remote (default: origin)\n  --output PATH        Also copy generated run JSON to PATH\n  --dry-run            Generate and validate without committing/pushing\n`,
+    `Usage: bun benchmarks/tools/record-results.ts [options]\n\nOptions:\n  --revision REF       Revision to record (default: HEAD)\n  --environment ID     Stable environment series ID (default: hostname)\n  --protocol ID        Benchmark protocol ID (default: munkbench-v5)\n  --samples N          Raw samples per benchmark (default: 10)\n  --warmup N           Untimed warmups (default: 2)\n  --data-branch NAME   Results branch (default: benchmark-data)\n  --remote NAME        Git remote (default: origin)\n  --output PATH        Also copy generated run JSON to PATH\n  --dry-run            Generate and validate without committing/pushing\n`,
   );
   process.exit(2);
 }
@@ -29,7 +29,7 @@ if (has("--help") || has("-h")) usage();
 
 const revision = option("--revision", "HEAD")!;
 const environmentArg = option("--environment");
-const protocol = option("--protocol", "munkbench-v4")!;
+const protocol = option("--protocol", "munkbench-v5")!;
 const samples = Number(option("--samples", "10"));
 const warmup = Number(option("--warmup", "2"));
 const dataBranch = option("--data-branch", "benchmark-data")!;
@@ -105,7 +105,7 @@ const allowedDuringDryRun = [
   "benchmarks/BENCHMARKS-REFERENCE.md",
   "benchmarks/README.md",
   "benchmarks/munkbench.c",
-  "benchmarks/results-schema-v4.json",
+  "benchmarks/results-schema-v5.json",
   "benchmarks/tools",
 ];
 if (
@@ -181,7 +181,7 @@ try {
     process.platform === "win32" ? "munkbench.exe" : "munkbench",
   );
   const validationText = await run(
-    [executable, "--profile", "smoke", "--summary-json", "--checkpoints", "0,1,10,50,180,181"],
+    [executable, "--profile", "smoke", "--summary-json", "--checkpoints", "0,1,10,50,180,181,final"],
     sourceDir,
   );
   const validation = JSON.parse(validationText);
@@ -199,7 +199,19 @@ try {
     sleepCheckpoints.find((checkpoint: any) => checkpoint.step === step)
       ?.sleeping_bodies;
   const validationOk =
-    validation.benchmarks.length === 17 &&
+    validation.benchmarks.length === 26 &&
+    validation.benchmarks.filter((b: any) => b.benchmark.endsWith("Constraints")).every((b: any) =>
+      b.benchmark_metrics?.constraint_count === b.size &&
+      b.benchmark_metrics?.peak_error > 0 &&
+      b.benchmark_metrics?.peak_impulse > 0 &&
+      Number.isFinite(b.benchmark_metrics?.max_error),
+    ) &&
+    validationByName.get("ConstraintMix")?.benchmark_metrics?.type_count === 10 &&
+    validationByName.get("ConstraintMix")?.benchmark_metrics?.wake_body_was_sleeping === true &&
+    validationByName.get("ConstraintMix")?.benchmark_metrics?.wake_body_is_awake === true &&
+    validationByName.get("ConstraintMix")?.benchmark_metrics?.per_type?.every((entry: any) =>
+      entry.constraint_count > 0 && entry.peak_error > 0 && entry.peak_impulse > 0 && Number.isFinite(entry.max_error),
+    ) &&
     validation.benchmarks.every((b: any) =>
       b.checkpoints.every((c: any) => c.invalid_values === 0),
     ) &&
@@ -229,8 +241,8 @@ try {
   );
   const rows = parseCsv(csv);
   const names = [...new Set(rows.map((row) => row.benchmark))];
-  if (names.length !== 17)
-    throw new Error(`Expected 17 benchmarks, got ${names.length}`);
+  if (names.length !== 26)
+    throw new Error(`Expected 26 benchmarks, got ${names.length}`);
   const benchmarks = names.map((name) => {
     const selected = rows.filter((row) => row.benchmark === name);
     if (selected.length !== samples)
@@ -284,7 +296,7 @@ try {
       cpu_affinity: "0",
       profile: "reference",
     },
-    validation: { passed: true, checkpoints: "0,1,10,50,180,181" },
+    validation: { passed: true, checkpoints: "0,1,10,50,180,181,final" },
     benchmarks,
   };
 

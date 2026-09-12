@@ -97,6 +97,32 @@ contact persistence and movement between sleeping/static and dynamic indexes.
 
 A frictional conveyor-like ground segment with non-zero surface velocity carrying mixed circles and boxes. Covers the tangent solver and transport-belt behavior used by Pymunk applications.
 
+### 18–25. Focused Constraint Scenarios
+
+Eight collision-free workloads isolate the built-in constraint solvers that were
+not independently covered by BigMobile or Tumbler:
+
+- SlideConstraints
+- PivotConstraints
+- GrooveConstraints
+- GearConstraints
+- RatchetConstraints
+- RotaryLimitConstraints
+- DampedSpringConstraints
+- DampedRotarySpringConstraints
+
+Each scenario creates independent dynamic-body pairs, gives them initial linear
+and angular motion, and reports final/peak constraint error and peak impulse.
+BigMobile continues to cover Pin Joint at scale, while Tumbler covers Simple Motor
+and Pin Joint in an integrated scene.
+
+### 26. Constraint Mix
+
+An integrated workload interleaves all ten constraint types with dynamic, static,
+and kinematic counterpart bodies. It also includes collision shapes, frictional
+ground contacts, sleeping, and a wake impulse. Per-type error and impulse metrics
+ensure that one fast constraint type cannot hide a regression in another.
+
 ---
 
 ## Performance Context
@@ -129,6 +155,15 @@ A frictional conveyor-like ground segment with non-zero surface velocity carryin
 | Collision Callbacks    | Normal            | Handler and wildcard callbacks |
 | Sleep/Wake             | Normal            | Sleeping, activation, contact persistence |
 | Surface Velocity       | Normal            | Friction + non-zero surface velocity |
+| Slide Constraints      | Focused           | Slide Joint solver |
+| Pivot Constraints      | Focused           | Pivot Joint solver |
+| Groove Constraints     | Focused           | Groove Joint solver |
+| Gear Constraints       | Focused           | Gear Joint solver |
+| Ratchet Constraints    | Focused           | Ratchet Joint solver |
+| Rotary Limit Constraints | Focused         | Rotary Limit Joint solver |
+| Damped Spring Constraints | Focused        | Damped Spring solver |
+| Damped Rotary Spring Constraints | Focused | Damped Rotary Spring solver |
+| Constraint Mix         | Integrated        | All constraints + contacts/sleeping |
 
 ## CCD Benchmarks
 
