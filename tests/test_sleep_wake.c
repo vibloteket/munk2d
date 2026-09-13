@@ -2,20 +2,24 @@
 #include <stdlib.h>
 #include <string.h>
 #include "chipmunk/chipmunk_private.h"
+#include "chipmunk/cpHastySpace.h"
 
 #define BODY_COUNT 8
 #define JOINT_COUNT 6
+#define ARBITER_CAPACITY (3*BODY_COUNT)
 
 typedef struct Fixture {
 	cpSpace *space;
+	void (*step)(cpSpace *, cpFloat);
+	void (*freeSpace)(cpSpace *);
 	cpBody *bodies[BODY_COUNT];
 	cpShape *shapes[BODY_COUNT], *ground;
 	cpConstraint *joints[JOINT_COUNT];
 	cpBody *active[BODY_COUNT];
 	int activeCount;
-	cpArbiter *arbiters[BODY_COUNT];
-	int arbiterCount, contactCounts[BODY_COUNT];
-	struct cpContact contacts[BODY_COUNT][CP_MAX_CONTACTS_PER_ARBITER];
+	cpArbiter *arbiters[ARBITER_CAPACITY];
+	int arbiterCount, contactCounts[ARBITER_CAPACITY];
+	struct cpContact contacts[ARBITER_CAPACITY][CP_MAX_CONTACTS_PER_ARBITER];
 } Fixture;
 
 typedef struct WakeContext {
@@ -48,16 +52,21 @@ check_body_order(Fixture *f)
 }
 
 static void
-init_fixture(Fixture *f, cpBool shapes)
+init_fixture(Fixture *f, cpBool shapes, cpBool hasty)
 {
 	memset(f, 0, sizeof(*f));
-	f->space = cpSpaceNew();
+	f->space = hasty ? cpHastySpaceNew() : cpSpaceNew();
+	f->step = hasty ? cpHastySpaceStep : cpSpaceStep;
+	f->freeSpace = hasty ? cpHastySpaceFree : cpSpaceFree;
+	/* HastySpace defaults to one thread; keep tests deterministic. */
 	cpSpaceSetGravity(f->space, cpv(0, -10));
 	cpSpaceSetSleepTimeThreshold(f->space, 100);
 	f->ground = cpSpaceAddShape(f->space, cpSegmentShapeNew(cpSpaceGetStaticBody(f->space), cpv(-10, 0), cpv(40, 0), 0));
 	for(int i = 0; i < BODY_COUNT; i++){
 		cpBody *body = cpSpaceAddBody(f->space, i == BODY_COUNT - 1 ? cpBodyNewKinematic() : cpBodyNew(1, 1));
-		cpBodySetPosition(body, cpv(4*i, i == BODY_COUNT - 1 ? 4 : 0.45));
+		/* The first sleeping component has body/body contacts as well as
+		 * ground contacts, exercising both ownership sides during restoration. */
+		cpBodySetPosition(body, cpv(i < 3 ? 0.9*i : 4*i, i == BODY_COUNT - 1 ? 4 : 0.45));
 		f->active[f->activeCount++] = f->bodies[i] = body;
 		/* Keep an awake contact to trigger collision callbacks even when the
 		 * sleeping components have no shapes. */
@@ -70,16 +79,18 @@ init_fixture(Fixture *f, cpBool shapes)
 		f->joints[i] = cpSpaceAddConstraint(f->space, cpPinJointNew(a[i] < 0 ? s : f->bodies[a[i]], b[i] < 0 ? s : f->bodies[b[i]], cpvzero, cpvzero));
 	}
 	/* Initialize contact buffers and nonzero cached impulses before sleeping. */
-	cpSpaceStep(f->space, 1.0/60.0);
+	f->step(f->space, 1.0/60.0);
 	check_body_order(f);
 	f->arbiterCount = f->space->arbiters->num;
-	check(f->arbiterCount <= BODY_COUNT, "fixture contact capacity");
-	check(!shapes || f->arbiterCount > 0, "shaped fixture must have contacts");
+	check(f->arbiterCount <= ARBITER_CAPACITY, "fixture contact capacity");
+	int dynamicPairs = 0;
 	for(int i = 0; i < f->arbiterCount; i++){
 		cpArbiter *arb = f->arbiters[i] = (cpArbiter *)f->space->arbiters->arr[i];
+		if(cpBodyGetType(arb->body_a) == CP_BODY_TYPE_DYNAMIC && cpBodyGetType(arb->body_b) == CP_BODY_TYPE_DYNAMIC) dynamicPairs++;
 		f->contactCounts[i] = arb->count;
 		memcpy(f->contacts[i], arb->contacts, arb->count*sizeof(struct cpContact));
 	}
+	check(!shapes || dynamicPairs > 0, "shaped fixture must have dynamic/dynamic contacts");
 }
 
 static void
@@ -134,6 +145,28 @@ check_queue(WakeContext *ctx, int count)
 }
 
 static void
+check_contact_graph(Fixture *f)
+{
+	int total = 0;
+	for(int i = 0; i <= BODY_COUNT; i++){
+		cpBody *body = i == BODY_COUNT ? cpSpaceGetStaticBody(f->space) : f->bodies[i];
+		cpArbiter *prev = NULL;
+		int count = 0;
+		for(cpArbiter *arb = body->arbiterList; arb;){
+			check(++count <= f->space->arbiters->num, "cycle in body contact list");
+			check(arb->body_a == body || arb->body_b == body, "contact linked to wrong body");
+			check(cpArrayContains(f->space->arbiters, arb), "inactive contact remains threaded");
+			struct cpArbiterThread *thread = cpArbiterThreadForBody(arb, body);
+			check(thread->prev == prev, "broken contact back-link");
+			prev = arb;
+			arb = thread->next;
+			total++;
+		}
+	}
+	check(total == 2*f->space->arbiters->num, "contacts must be threaded once per body");
+}
+
+static void
 check_restored(Fixture *f)
 {
 	check(!cpSpaceIsLocked(f->space), "space should be unlocked");
@@ -142,6 +175,7 @@ check_restored(Fixture *f)
 	check(f->space->constraints->num == JOINT_COUNT, "constraints not restored exactly once");
 	check_unique(f->space->constraints);
 	check_unique(f->space->arbiters);
+	check_contact_graph(f);
 	check_body_order(f);
 	for(int i = 0; i < JOINT_COUNT; i++) check(cpArrayContains(f->space->constraints, f->joints[i]), "missing joint after wake");
 	for(int i = 0; i < BODY_COUNT; i++){
@@ -241,14 +275,14 @@ free_fixture(Fixture *f)
 	}
 	cpSpaceRemoveShape(f->space, f->ground);
 	cpShapeFree(f->ground);
-	cpSpaceFree(f->space);
+	f->freeSpace(f->space);
 }
 
 static void
-run_case(int mode, cpBool shapes)
+run_case(int mode, cpBool shapes, cpBool hasty)
 {
 	Fixture f;
-	init_fixture(&f, shapes);
+	init_fixture(&f, shapes, hasty);
 	prepare_sleep(&f);
 	WakeContext ctx = {&f, 0, 0, 0};
 	if(mode == 0){
@@ -259,26 +293,32 @@ run_case(int mode, cpBool shapes)
 	} else {
 		/* Expected append is visible to post-step checks, but callbacks check
 		 * against the still-sleeping active-list model until unlock. */
-		if(mode == 2){
+		if(mode >= 2){
 			cpCollisionHandler *handler = cpSpaceAddGlobalCollisionHandler(f.space);
-			handler->preSolveFunc = collision_wake;
+			if(mode == 2) handler->preSolveFunc = collision_wake;
+			else handler->postSolveFunc = collision_wake;
 			handler->userData = &ctx;
-			cpSpaceStep(f.space, 1.0/60.0);
+			f.step(f.space, 1.0/60.0);
 		} else {
 			cpSpaceBBQuery(f.space, cpBBNew(-11, -2, 41, 6), CP_SHAPE_FILTER_ALL, outer_query, &ctx);
 		}
 		check(ctx.outerCalls > 0 && ctx.postCalls == 1, "wake/post-step callback counts");
 	}
 	check_restored(&f);
-	if(mode != 2){
+	if(mode < 2){
 		for(int i = 0; i < f.arbiterCount; i++){
 			check(f.arbiters[i]->count == f.contactCounts[i], "contact count changed during wake");
 			check(memcmp(f.arbiters[i]->contacts, f.contacts[i], f.contactCounts[i]*sizeof(struct cpContact)) == 0, "cached contacts changed during sleep/wake");
 		}
 	}
 	/* Remove the collision callback before another simulation step. */
-	if(mode == 2) cpSpaceAddGlobalCollisionHandler(f.space)->preSolveFunc = cpCollisionHandlerDoNothing.preSolveFunc;
-	cpSpaceStep(f.space, 1.0/60.0);
+	if(mode >= 2){
+		cpCollisionHandler *handler = cpSpaceAddGlobalCollisionHandler(f.space);
+		handler->preSolveFunc = cpCollisionHandlerDoNothing.preSolveFunc;
+		handler->postSolveFunc = cpCollisionHandlerDoNothing.postSolveFunc;
+	}
+	f.step(f.space, 1.0/60.0);
+	check_contact_graph(&f);
 	trace_state(&f, mode, shapes);
 	/* Re-sleep and wake to cover repeated pool/list reuse. */
 	prepare_sleep(&f);
@@ -291,17 +331,12 @@ run_case(int mode, cpBool shapes)
 int
 main(int argc, char **argv)
 {
-	/* Optional reproducer for a separate, pre-existing contact-graph failure.
-	 * Not part of the optimization regression suite until that bug is fixed. */
-	if(argc == 2 && strcmp(argv[1], "--repro-contact-wake") == 0){
-		run_case(2, cpTrue);
-		return 0;
+	cpBool hasty = argc == 2 && strcmp(argv[1], "--hasty") == 0;
+	check(argc == 1 || hasty, "unexpected test arguments");
+	for(int mode = 0; mode < 4; mode++){
+		run_case(mode, cpFalse, hasty);
+		run_case(mode, cpTrue, hasty);
 	}
-	run_case(0, cpFalse);
-	run_case(0, cpTrue);
-	run_case(1, cpFalse);
-	run_case(1, cpTrue);
-	run_case(2, cpFalse);
 	puts("Sleep/wake bookkeeping tests passed.");
 	return 0;
 }

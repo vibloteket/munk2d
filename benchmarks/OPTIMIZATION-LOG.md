@@ -134,6 +134,10 @@ quality/performance tradeoffs require explicit approval before implementation.
 | Reuse edge deltas in contact clipping | Tumbler improved 2.9%, but Multifixture/MostlyStatic regressed about 0.8–1.1%; rejected. |
 | Constraint-list null guard in broad-phase rejection | Neutral. |
 
+## Correctness fixes discovered during optimization work
+
+- Callback-triggered wake of a sleeping contact component could restore arbiters before contact-graph rebuilding while retaining their old links, causing assertions or corrupt graph links. `cpSpaceStep` and `cpHastySpaceStep` now unthread only arbiters appended during the collision-phase unlock before rebuilding them. Other wake/unlock phases retain their graph. Regression tests cover dynamic/dynamic and ground contacts, nested queries, pre/post-solve callbacks, and repeated sleep/wake, including single-thread HastySpace. Debug/Release and strict ASan/LSan/UBSan tests pass; unaffected targeted traces remain byte-exact. No benchmarks were run while the user's performance hold is active.
+
 ## Benchmark and CI changes
 
 - [#14](https://github.com/vibloteket/munk2d/pull/14): email only changed baseline/current gallery PNGs.

@@ -29,7 +29,8 @@ add_test(NAME chipmunk_bbtree_tests COMMAND chipmunk_bbtree_tests)
 
 add_executable(chipmunk_sleep_wake_tests test_sleep_wake.c)
 target_include_directories(chipmunk_sleep_wake_tests PRIVATE ${chipmunk_SOURCE_DIR}/include)
-target_link_libraries(chipmunk_sleep_wake_tests PRIVATE chipmunk_static)
+find_package(Threads REQUIRED)
+target_link_libraries(chipmunk_sleep_wake_tests PRIVATE chipmunk_static Threads::Threads)
 
 if(ANDROID OR UNIX)
   target_link_libraries(chipmunk_sleep_wake_tests PRIVATE m)
@@ -41,3 +42,5 @@ if(MSVC)
 endif()
 
 add_test(NAME chipmunk_sleep_wake_tests COMMAND chipmunk_sleep_wake_tests)
+add_test(NAME chipmunk_hasty_sleep_wake_tests COMMAND chipmunk_sleep_wake_tests --hasty)
+set_tests_properties(chipmunk_sleep_wake_tests chipmunk_hasty_sleep_wake_tests PROPERTIES TIMEOUT 30)
