@@ -77,7 +77,7 @@ cpSpaceActivateBody(cpSpace *space, cpBody *body)
 		
 		CP_BODY_FOREACH_CONSTRAINT(body, constraint){
 			cpBody *bodyA = constraint->a;
-			if(body == bodyA || cpBodyGetType(bodyA) == CP_BODY_TYPE_STATIC) cpArrayPush(space->constraints, constraint);
+			if(body == bodyA || cpBodyGetType(bodyA) == CP_BODY_TYPE_STATIC) cpSpacePushConstraint(space, constraint);
 		}
 	}
 }
@@ -109,7 +109,7 @@ cpSpaceDeactivateBody(cpSpace *space, cpBody *body)
 		
 	CP_BODY_FOREACH_CONSTRAINT(body, constraint){
 		cpBody *bodyA = constraint->a;
-		if(body == bodyA || cpBodyGetType(bodyA) == CP_BODY_TYPE_STATIC) cpArrayDeleteObj(space->constraints, constraint);
+		if(body == bodyA || cpBodyGetType(bodyA) == CP_BODY_TYPE_STATIC) cpSpaceRemoveConstraintFromArray(space, constraint);
 	}
 }
 

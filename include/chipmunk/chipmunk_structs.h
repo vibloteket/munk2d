@@ -27,6 +27,7 @@
 #define CHIPMUNK_STRUCTS_H
 
 #include "chipmunk/chipmunk.h"
+#include <limits.h>
 
 struct cpArray {
 	int num, max;
@@ -248,6 +249,12 @@ typedef struct cpConstraintClass {
 	cpConstraintGetImpulseImpl getImpulse;
 } cpConstraintClass;
 
+// Keep the index inside the default 64-bit/double layout's existing padding.
+// Other configurations retain their original layout and array operations.
+#if UINTPTR_MAX == UINT64_MAX && UINT_MAX == UINT32_MAX && CP_USE_DOUBLES && !defined(CP_BOOL_TYPE) && (defined(_MSC_VER) || (defined(__SIZEOF_DOUBLE__) && __SIZEOF_DOUBLE__ == 8))
+#define CP_CONSTRAINT_ARRAY_INDEX
+#endif
+
 struct cpConstraint {
 	const cpConstraintClass *klass;
 	
@@ -261,6 +268,9 @@ struct cpConstraint {
 	cpFloat maxBias;
 	
 	cpBool collideBodies;
+#ifdef CP_CONSTRAINT_ARRAY_INDEX
+	int activeIndex;
+#endif
 	
 	cpConstraintPreSolveFunc preSolve;
 	cpConstraintPostSolveFunc postSolve;
