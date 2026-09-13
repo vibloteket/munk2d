@@ -121,7 +121,10 @@ and Pin Joint in an integrated scene.
 An integrated workload interleaves all ten constraint types with dynamic, static,
 and kinematic counterpart bodies. It also includes collision shapes, frictional
 ground contacts, sleeping, and a wake impulse. Per-type error and impulse metrics
-ensure that one fast constraint type cannot hide a regression in another.
+ensure that one fast constraint type cannot hide a regression in another. Its
+`constraint_count` metric is the total owned count. The generic checkpoint field
+`constraints` is the active solver-list count and can decrease as components
+sleep without any constraint being removed.
 
 ---
 
