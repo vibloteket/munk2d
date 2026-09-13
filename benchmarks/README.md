@@ -81,13 +81,13 @@ Output is CSV, with one row per raw sample:
 version,benchmark,size,sample,batch,init_time,run_time
 ```
 
-## Isolated sleep/wake lifecycle measurements
+## Isolated shape/sleep/wake lifecycle measurements
 
 `tools/sleep-wake-lifecycle.c` is a separate POSIX microbenchmark, not a new
 scenario in the versioned MunkBench protocol. It exercises the public API with
-shape-less, constraint-less bodies in one sleeping group. A static query shape
-provides the callback used for locked wake. Use the same compiler, harness and
-build flags for baseline and candidate:
+constraint-less bodies, optionally with one circle shape per body. Sleep/wake
+modes use one sleeping group; a static query shape provides the callback for
+locked wake. Use the same compiler, harness and build flags for both variants:
 
 ```sh
 cc -O3 -DNDEBUG -Iinclude benchmarks/tools/sleep-wake-lifecycle.c \
@@ -95,17 +95,27 @@ cc -O3 -DNDEBUG -Iinclude benchmarks/tools/sleep-wake-lifecycle.c \
 ./build/sleep-wake-lifecycle queued 10000 3
 ./build/sleep-wake-lifecycle sleep 10000 3
 ./build/sleep-wake-lifecycle unlocked 10000 3
+./build/sleep-wake-lifecycle remove 10000 3
+./build/sleep-wake-lifecycle sleep 10000 3 shapes
+./build/sleep-wake-lifecycle queued 10000 3 shapes
 ```
 
-Arguments are mode, body count and independent repetitions. Each output row is
-`mode,bodies,repetitions,total_seconds,body_order_checksum`. Divide time by the
-repetition count for per-operation time. `queued` includes the query, callback,
-queue insertion and activation at unlock; `unlocked` is the control without the
-queue; `sleep` measures the explicit sleep loop. Initialization, correctness
-checks and cleanup are excluded. Counts, wake state and iteration checksum must
-match across variants. These timings do not predict total frame time or contact-
-heavy wake costs. Always measure normal MunkBench controls as well, and alternate
-baseline/candidate execution order.
+Arguments are mode, body count, independent repetitions and optional `shapes`.
+`remove` implies shapes and measures only `cpSpaceRemoveShape` for each body;
+shape freeing and body removal happen afterward, outside the timer. Other modes
+remain shape-less unless `shapes` is supplied. Shapes occupy a non-overlapping
+grid; no physics steps or contact solving run in this harness.
+
+Each output row is `mode,bodies,repetitions,total_seconds,order_checksum`.
+Record the `shapes` option separately with the run configuration. Divide time by
+repetitions for per-operation time. `queued` includes the query, callback, queue
+insertion and activation at unlock; `unlocked` is the control without the queue;
+`sleep` measures the explicit sleep loop. With shapes, sleep/wake includes spatial-
+index migration. Initialization, correctness checks and cleanup are excluded.
+Body counts/wake state, shape membership/counts and iteration checksums must match
+across variants. These timings do not predict total frame time, complete teardown
+or contact-heavy wake costs. Always measure normal MunkBench controls as well,
+and alternate baseline/candidate execution order.
 
 ## Validation summaries
 

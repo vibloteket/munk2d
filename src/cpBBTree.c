@@ -22,8 +22,15 @@
 
 #include "stdlib.h"
 #include "stdio.h"
+#include <limits.h>
 
 #include "chipmunk/chipmunk_private.h"
+
+// Use the default 64-bit leaf's timestamp padding without growing Node.
+// Preserve the existing layout and removal path for other configurations.
+#if UINTPTR_MAX == UINT64_MAX && UINT_MAX == UINT32_MAX && !defined(CP_TIMESTAMP_TYPE)
+#define CP_BBTREE_LEAF_INDEX
+#endif
 
 static inline cpSpatialIndexClass *Klass(void);
 
@@ -93,6 +100,9 @@ struct Node {
 		// Leaves
 		struct {
 			cpTimestamp stamp;
+#ifdef CP_BBTREE_LEAF_INDEX
+			int arrayIndex;
+#endif
 			Pair *pairs;
 		} leaf;
 	} node;
@@ -103,6 +113,9 @@ struct Node {
 #define B node.children.b
 #define STAMP node.leaf.stamp
 #define PAIRS node.leaf.pairs
+#ifdef CP_BBTREE_LEAF_INDEX
+#define ARRAY_INDEX node.leaf.arrayIndex
+#endif
 
 typedef struct Thread {
 	Pair *prev;
@@ -738,6 +751,9 @@ static void
 cpBBTreeInsert(cpBBTree *tree, void *obj, cpHashValue hashid)
 {
 	Node *leaf = (Node *)cpHashSetInsert(tree->leaves, hashid, obj, (cpHashSetTransFunc)leafSetTrans, tree);
+#ifdef CP_BBTREE_LEAF_INDEX
+	leaf->ARRAY_INDEX = tree->leafArray->num;
+#endif
 	cpArrayPush(tree->leafArray, leaf);
 	
 	Node *root = tree->root;
@@ -752,7 +768,16 @@ static void
 cpBBTreeRemove(cpBBTree *tree, void *obj, cpHashValue hashid)
 {
 	Node *leaf = (Node *)cpHashSetRemove(tree->leaves, hashid, obj);
+#ifdef CP_BBTREE_LEAF_INDEX
+	cpArray *array = tree->leafArray;
+	int index = leaf->ARRAY_INDEX;
+	Node *last = (Node *)array->arr[--array->num];
+	array->arr[index] = last;
+	last->ARRAY_INDEX = index;
+	array->arr[array->num] = NULL;
+#else
 	cpArrayDeleteObj(tree->leafArray, leaf);
+#endif
 	
 	tree->root = SubtreeRemove(tree->root, leaf, tree);
 	PairsClear(leaf, tree);
