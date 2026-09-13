@@ -25,7 +25,8 @@ quality/performance tradeoffs require explicit approval before implementation.
 | BBTree (next major) | Dense leaf array for sequential iteration while retaining hash lookup | AddPair -2.7%, SlowExplosion -4.6%, Multifixture -1.7%; neutral to about -0.6% elsewhere. Deterministic contact-order changes can shift sleep timing; ConstraintMix has one additional sleeping Pivot component at step 600, with all constraints still owned. | [#32](https://github.com/vibloteket/munk2d/pull/32) |
 | Hash set (next major) | Intrusive active-bin list for filtering without scanning empty buckets | AddPair/MostlyStatic/SleepWake -4% to -5%; N2 -5%; neutral to about -1.5% elsewhere | [#33](https://github.com/vibloteket/munk2d/pull/33) |
 | Solver | Skip zero-effect impulse writes to a static/kinematic collision body | Static-contact workloads -3% to -10%; dynamic-only controls neutral | [#40](https://github.com/vibloteket/munk2d/pull/40) |
-| Pivot Joint | Reuse local anchor offsets when applying the iteration impulse | PivotConstraints about -0.8%; ConstraintMix and integration controls neutral | — |
+| Pivot Joint | Reuse local anchor offsets when applying the iteration impulse | PivotConstraints about -0.8%; ConstraintMix and integration controls neutral | [#44](https://github.com/vibloteket/munk2d/pull/44) |
+| Pivot/Groove Joint | Skip vector-length clamp when `maxForce` is infinite | Pivot -1.9% to -2.1%, Groove -5.0% to -6.8%; mixed/integration controls neutral | — |
 
 ## Rejected: BBTree
 
@@ -46,15 +47,17 @@ quality/performance tradeoffs require explicit approval before implementation.
 
 | Experiment | Outcome / reason |
 |---|---|
+| Cache `maxForce*dt` in six constraint structs | Byte-exact; small isolated wins were inconsistent at reference size, ConstraintMix neutral/slower, and larger structs regressed BigMobile about 1%. |
+| Represent empty spring warm-start callbacks as `NULL` | Byte-exact and ConstraintMix slightly faster, but a generic null guard regressed Ratchet/Rotary Limit 3–5%. |
+| Skip zero-effect Gear Joint writes with inner branches | Byte-exact, but isolated Gear and ConstraintMix were neutral/slower. |
+| Reuse Damped Spring, Slide, Pin, and Groove local solver values | Byte-exact, but compilers already retained/equivalently generated most values; no robust mixed/reference win. |
+| Filter inactive Ratchet/Rotary Limit constraints into a solver list | Isolated limit workloads improved 21–22%, but list/filter/code-layout overhead regressed unrelated smoke cases. |
+| Switch inactive Ratchet/Rotary Limit constraints to no-op classes | Isolated limit workloads improved 6–8%, but ConstraintMix regressed about 0.2%. |
 | Direct scalar vector expansion | Changed floating-point evaluation order and trajectories. |
 | `restrict` body/arbiter pointers | Mixed; FallingSquares regressed about 0.7%. |
 | Cache arbiter array/count outside loops | Near neutral; no primary-workload win. |
 | Dense per-step arbiter solver headers | Contact-heavy zero-friction cases improved 0.7–1.0%, but header build/dispatch regressed N2/MostlyStatic/SurfaceVelocity 0.7–1.2%. |
 | Partition active arbiters by friction before solving | AddPair improved 2%, but partition build/two loops regressed MostlyStatic 1.2% and MixedStaticDynamic/Multifixture 0.5–0.6%. |
-| Cache `maxForce*dt` in six constraint structs | Byte-exact; small isolated wins were inconsistent at reference size, ConstraintMix neutral/slower, and larger structs regressed BigMobile about 1%. |
-| Represent empty spring warm-start callbacks as NULL | Byte-exact and ConstraintMix slightly faster, but a generic null guard regressed Ratchet/Rotary Limit 3–5%. |
-| Skip zero-effect Gear Joint writes with inner branches | Byte-exact, but isolated Gear and ConstraintMix were neutral/slower. |
-| Reuse Damped Spring local r/n values for final impulse | Byte-exact but below 0.4% and ConstraintMix neutral/slower. |
 | Force contact-loop unrolling | Small mixed changes; FallingSquares did not improve. |
 | Explicit one-/two-contact solver paths | One-contact cases improved, FallingSquares regressed 0.3–0.6%. |
 | Cache tangent / hoist `cpvperp(n)` | Compiler already did the useful work; neutral. |
