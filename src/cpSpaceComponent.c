@@ -347,6 +347,4 @@ cpBodySleepWithGroup(cpBody *body, cpBody *group){
 		
 		cpArrayPush(space->sleepingComponents, body);
 	}
-	
-	cpArrayDeleteObj(space->dynamicBodies, body);
 }
