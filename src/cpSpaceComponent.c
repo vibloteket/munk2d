@@ -32,8 +32,10 @@ cpSpaceActivateBody(cpSpace *space, cpBody *body)
 	cpAssertHard(cpBodyGetType(body) == CP_BODY_TYPE_DYNAMIC, "Internal error: Attempting to activate a non-dynamic body.");
 		
 	if(space->locked){
-		// cpSpaceActivateBody() is called again once the space is unlocked
-		if(!cpArrayContains(space->rousedBodies, body)) cpArrayPush(space->rousedBodies, body);
+		// cpBodyActivate() clears component links before queueing. Repeated
+		// activation therefore cannot queue a body again before outer unlock.
+		cpAssertSoft(!cpArrayContains(space->rousedBodies, body), "Internal error: Body is already queued for activation.");
+		cpArrayPush(space->rousedBodies, body);
 	} else {
 		cpAssertSoft(body->sleeping.root == NULL && body->sleeping.next == NULL, "Internal error: Activating body non-NULL node pointers.");
 		cpArrayPush(space->dynamicBodies, body);
