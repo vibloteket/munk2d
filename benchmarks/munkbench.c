@@ -323,9 +323,15 @@ free_space_children(cpSpace *space)
 	ptr_array_init(&constraints);
 	ptr_array_init(&bodies);
 
+	cpSpaceEachBody(space, collect_body, &bodies);
+	/* cpSpaceEachConstraint visits only active constraints. Wake every sleeping
+	 * component before collecting them, including bodies without shapes.
+	 * Snapshot bodies first: activation changes the space's body lists. */
+	for(size_t i = 0; i < bodies.count; i++){
+		cpBodyActivate((cpBody *)bodies.items[i]);
+	}
 	cpSpaceEachShape(space, collect_shape, &shapes);
 	cpSpaceEachConstraint(space, collect_constraint, &constraints);
-	cpSpaceEachBody(space, collect_body, &bodies);
 
 	for(size_t i = 0; i < shapes.count; i++){
 		cpShape *shape = (cpShape *)shapes.items[i];
@@ -1354,7 +1360,9 @@ collect_summary(cpSpace *space, int step)
 	memset(&arbiter_data, 0, sizeof(arbiter_data));
 	arbiter_data.summary = &summary;
 	cpSpaceEachBody(space, summary_body_arbiters, &arbiter_data);
-	qsort(arbiter_data.arbiters, (size_t)arbiter_data.count, sizeof(cpArbiter *), compare_arbiter_ptrs);
+	if(arbiter_data.count > 1){
+		qsort(arbiter_data.arbiters, (size_t)arbiter_data.count, sizeof(cpArbiter *), compare_arbiter_ptrs);
+	}
 	for(int i = 0; i < arbiter_data.count; i++){
 		if(i > 0 && arbiter_data.arbiters[i] == arbiter_data.arbiters[i - 1]) continue;
 		summary.contact_pairs++;

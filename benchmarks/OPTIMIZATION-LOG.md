@@ -141,6 +141,7 @@ quality/performance tradeoffs require explicit approval before implementation.
 - SurfaceVelocity adds a permanent non-zero surface-velocity counterexample; protocol `munkbench-v3` has 17 scenarios.
 - SurfaceVelocity adds a conveyor-style non-zero surface-velocity control; protocol `munkbench-v3` has 17 scenarios.
 - Focused coverage for Slide, Pivot, Groove, Gear, Ratchet, Rotary Limit, Damped Spring, and Damped Rotary Spring plus integrated `ConstraintMix` brings `munkbench-v5` to 26 scenarios. BigMobile and Tumbler also cover Pin Joint and Simple Motor.
+- Benchmark cleanup now wakes sleeping components before collecting constraints, fixing a baseline `ConstraintMix` smoke leak of 2,656 bytes in 11 constraints. A CTest regression covers active/sleeping constraints with and without shapes and actual mix teardown at steps 0/181/600. Empty contact summaries also avoid `qsort(NULL, 0, ...)`. All 26 smoke/reference summaries remain byte-exact; strict ASan/LSan/UBSan passes. This is a benchmark correctness fix, not an engine optimization.
 - A permanent CI change disabling third-party APT repositories was rejected; transient mirror failures should be rerun.
 
 ## Current profile notes
