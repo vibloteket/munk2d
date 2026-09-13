@@ -22,9 +22,10 @@ quality/performance tradeoffs require explicit approval before implementation.
 | GJK | Start polygon support scan at vertex 1 | Polygon-heavy workloads about -0.3% to -0.9% | [#16](https://github.com/vibloteket/munk2d/pull/16) |
 | GJK/EPA | Dispatch support points by shape pair | Polygon/contact workloads about -1% to -2% | [#17](https://github.com/vibloteket/munk2d/pull/17) |
 | GJK/EPA | Pair-specific cached support lookup | Relevant GJK workloads about -0.4% to -1.0% | [#20](https://github.com/vibloteket/munk2d/pull/20) |
-| BBTree (next major) | Dense leaf array for sequential iteration while retaining hash lookup | AddPair -2.7%, SlowExplosion -4.6%, Multifixture -1.7%; neutral to about -0.6% elsewhere | [#32](https://github.com/vibloteket/munk2d/pull/32) |
+| BBTree (next major) | Dense leaf array for sequential iteration while retaining hash lookup | AddPair -2.7%, SlowExplosion -4.6%, Multifixture -1.7%; neutral to about -0.6% elsewhere. Deterministic contact-order changes can shift sleep timing; ConstraintMix has one additional sleeping Pivot component at step 600, with all constraints still owned. | [#32](https://github.com/vibloteket/munk2d/pull/32) |
 | Hash set (next major) | Intrusive active-bin list for filtering without scanning empty buckets | AddPair/MostlyStatic/SleepWake -4% to -5%; N2 -5%; neutral to about -1.5% elsewhere | [#33](https://github.com/vibloteket/munk2d/pull/33) |
 | Solver | Skip zero-effect impulse writes to a static/kinematic collision body | Static-contact workloads -3% to -10%; dynamic-only controls neutral | [#40](https://github.com/vibloteket/munk2d/pull/40) |
+| Pivot Joint | Reuse local anchor offsets when applying the iteration impulse | PivotConstraints about -0.8%; ConstraintMix and integration controls neutral | [#44](https://github.com/vibloteket/munk2d/pull/44) |
 | Pivot/Groove Joint | Skip vector-length clamp when `maxForce` is infinite | Pivot -1.9% to -2.1%, Groove -5.0% to -6.8%; mixed/integration controls neutral | — |
 
 ## Rejected: BBTree
