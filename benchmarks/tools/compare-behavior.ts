@@ -28,7 +28,7 @@ function usage(): never {
 if (args.includes("--help") || args.includes("-h")) usage();
 const baselinePath = option("--baseline");
 const candidatePath = option("--candidate");
-const envelopePath = option("--envelope") ?? "benchmarks/behavior-envelope-v4.json";
+const envelopePath = option("--envelope") ?? "benchmarks/behavior-envelope-v5.json";
 if (!baselinePath || !candidatePath) usage();
 
 async function json(path: string): Promise<Json> {
@@ -121,6 +121,41 @@ const sleepRule = envelope.scenario_invariants.SleepWake;
 const sleeping = (step: number) => checkpointAt(sleep, step)?.sleeping_bodies;
 if (!sleep || sleeping(sleepRule.sleeping_bodies_min_at_step.step) < sleepRule.sleeping_bodies_min_at_step.value) fail("SleepWake", "sleeping_bodies", { step: sleepRule.sleeping_bodies_min_at_step.step, candidate: sleeping(sleepRule.sleeping_bodies_min_at_step.step), allowed: `>= ${sleepRule.sleeping_bodies_min_at_step.value}` });
 if (!sleep || sleeping(sleepRule.sleeping_bodies_decrease.after) >= sleeping(sleepRule.sleeping_bodies_decrease.before)) fail("SleepWake", "sleeping_bodies_decrease", { baseline: sleeping(sleepRule.sleeping_bodies_decrease.before), candidate: sleeping(sleepRule.sleeping_bodies_decrease.after), allowed: "after < before" });
+
+for (const [name, rule] of Object.entries(envelope.scenario_invariants).filter(([name]) => name.endsWith("Constraints") && name !== "ConstraintMix") as [string, any][]) {
+  const benchmark = candidateByName.get(name);
+  const metrics = benchmark?.benchmark_metrics;
+  if (!metrics) {
+    fail(name, "benchmark_metrics", { candidate: "missing" });
+    continue;
+  }
+  if (metrics.constraint_kind !== rule.constraint_kind) fail(name, "constraint_kind", { candidate: metrics.constraint_kind, allowed: `exactly ${rule.constraint_kind}` });
+  if (metrics.constraint_count !== benchmark.size) fail(name, "constraint_count", { candidate: metrics.constraint_count, allowed: `exactly ${benchmark.size}` });
+  for (const metric of ["max_error", "sum_error", "peak_error", "peak_impulse"]) if (!finite(metrics[metric])) fail(name, metric, { candidate: metrics[metric], allowed: "finite" });
+  if (!(metrics.peak_error > 0)) fail(name, "peak_error", { candidate: metrics.peak_error, allowed: "> 0" });
+  if (!(metrics.peak_impulse > 0)) fail(name, "peak_impulse", { candidate: metrics.peak_impulse, allowed: "> 0" });
+  if (metrics.max_error > rule.max_error_max) fail(name, "max_error", { candidate: metrics.max_error, allowed: `<= ${rule.max_error_max}` });
+}
+
+const mix = candidateByName.get("ConstraintMix");
+const mixRule = envelope.scenario_invariants.ConstraintMix;
+const mixMetrics = mix?.benchmark_metrics;
+if (!mixMetrics) {
+  fail("ConstraintMix", "benchmark_metrics", { candidate: "missing" });
+} else {
+  if (mixMetrics.constraint_count !== mix.size) fail("ConstraintMix", "constraint_count", { candidate: mixMetrics.constraint_count, allowed: `exactly ${mix.size}` });
+  if (mixMetrics.type_count !== mixRule.type_count) fail("ConstraintMix", "type_count", { candidate: mixMetrics.type_count, allowed: `exactly ${mixRule.type_count}` });
+  if (!Array.isArray(mixMetrics.per_type) || mixMetrics.per_type.length !== mixRule.type_count) fail("ConstraintMix", "per_type", { candidate: mixMetrics.per_type?.length, allowed: `exactly ${mixRule.type_count} entries` });
+  if (mixRule.require_wake_transition && (!mixMetrics.wake_body_was_sleeping || !mixMetrics.wake_body_is_awake)) fail("ConstraintMix", "wake_transition", { candidate: { was_sleeping: mixMetrics.wake_body_was_sleeping, is_awake: mixMetrics.wake_body_is_awake }, allowed: "selected body sleeps before impulse and is awake after" });
+  for (const entry of mixMetrics.per_type ?? []) {
+    const kind = entry.constraint_kind;
+    if (entry.constraint_count < mixRule.per_type_count_min) fail("ConstraintMix", `type_${kind}_count`, { candidate: entry.constraint_count, allowed: `>= ${mixRule.per_type_count_min}` });
+    for (const metric of ["max_error", "sum_error", "peak_error", "peak_impulse"]) if (!finite(entry[metric])) fail("ConstraintMix", `type_${kind}_${metric}`, { candidate: entry[metric], allowed: "finite" });
+    if (!(entry.peak_error > 0)) fail("ConstraintMix", `type_${kind}_peak_error`, { candidate: entry.peak_error, allowed: "> 0" });
+    if (!(entry.peak_impulse > 0)) fail("ConstraintMix", `type_${kind}_peak_impulse`, { candidate: entry.peak_impulse, allowed: "> 0" });
+    if (entry.max_error > mixRule.max_error_max[kind]) fail("ConstraintMix", `type_${kind}_max_error`, { candidate: entry.max_error, allowed: `<= ${mixRule.max_error_max[kind]}` });
+  }
+}
 
 const report = { protocol: envelope.protocol, passed: failures.length === 0, compared_benchmarks: baselineByName.size, failures, warnings };
 console.log(JSON.stringify(report, null, 2));

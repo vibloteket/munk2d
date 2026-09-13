@@ -83,6 +83,41 @@ typedef struct SleepWakeState {
 	int wake_step;
 } SleepWakeState;
 
+typedef enum ConstraintKind {
+	CONSTRAINT_SLIDE,
+	CONSTRAINT_PIVOT,
+	CONSTRAINT_GROOVE,
+	CONSTRAINT_GEAR,
+	CONSTRAINT_RATCHET,
+	CONSTRAINT_ROTARY_LIMIT,
+	CONSTRAINT_DAMPED_SPRING,
+	CONSTRAINT_DAMPED_ROTARY_SPRING,
+	CONSTRAINT_PIN,
+	CONSTRAINT_SIMPLE_MOTOR,
+	CONSTRAINT_KIND_COUNT,
+} ConstraintKind;
+
+typedef struct ConstraintBenchState {
+	ConstraintKind kind;
+	int count;
+	cpConstraint **constraints;
+	cpFloat peak_error;
+	cpFloat peak_impulse;
+} ConstraintBenchState;
+
+typedef struct ConstraintMixState {
+	int count;
+	int step;
+	cpConstraint **constraints;
+	ConstraintKind *kinds;
+	cpBody **dynamic_bodies;
+	cpBody *wake_body;
+	cpBool wake_body_was_sleeping;
+	cpBool wake_body_is_awake;
+	cpFloat peak_error[CONSTRAINT_KIND_COUNT];
+	cpFloat peak_impulse[CONSTRAINT_KIND_COUNT];
+} ConstraintMixState;
+
 typedef enum BenchmarkProfile {
 	BENCHMARK_PROFILE_SMOKE,
 	BENCHMARK_PROFILE_REFERENCE,
@@ -825,6 +860,299 @@ init_sleep_wake(int size, void **state)
 	return space;
 }
 
+static cpSpace *
+init_constraint_benchmark(int size, void **state, ConstraintKind kind)
+{
+	cpSpace *space = new_space(0.0, -4.0);
+	ConstraintBenchState *constraint_state = (ConstraintBenchState *)calloc(1, sizeof(ConstraintBenchState));
+	if(!constraint_state){fprintf(stderr, "Out of memory.\n"); exit(1);}
+	constraint_state->kind = kind;
+	constraint_state->count = size;
+	constraint_state->constraints = (cpConstraint **)calloc((size_t)size, sizeof(cpConstraint *));
+	if(!constraint_state->constraints){fprintf(stderr, "Out of memory.\n"); exit(1);}
+	*state = constraint_state;
+
+	for(int i=0; i<size; i++){
+		cpFloat x = (cpFloat)(i % 32)*4.0;
+		cpFloat y = (cpFloat)(i/32)*4.0;
+		cpBody *a = cpSpaceAddBody(space, cpBodyNew(1.0, 1.0));
+		cpBody *b = cpSpaceAddBody(space, cpBodyNew(1.0, 1.0));
+		cpBodySetPosition(a, cpv(x, y));
+		cpBodySetPosition(b, cpv(x + 2.5, y + 0.5));
+		cpBodySetAngle(a, 0.15);
+		cpBodySetAngle(b, -0.2);
+		cpBodySetVelocity(a, cpv(0.5, 0.25));
+		cpBodySetVelocity(b, cpv(-0.25, -0.1));
+		cpBodySetAngularVelocity(a, 0.4);
+		cpBodySetAngularVelocity(b, -0.3);
+
+		cpConstraint *constraint = NULL;
+		switch(kind){
+			case CONSTRAINT_SLIDE:
+				constraint = cpSlideJointNew(a, b, cpvzero, cpvzero, 1.0, 2.0);
+				break;
+			case CONSTRAINT_PIVOT:
+				constraint = cpPivotJointNew2(a, b, cpv(1.0, 0.0), cpv(-1.0, 0.0));
+				break;
+			case CONSTRAINT_GROOVE:
+				constraint = cpGrooveJointNew(a, b, cpv(-1.0, 0.0), cpv(1.0, 0.0), cpv(-1.0, 0.0));
+				break;
+			case CONSTRAINT_GEAR:
+				constraint = cpGearJointNew(a, b, 0.0, 2.0);
+				break;
+			case CONSTRAINT_RATCHET:
+				constraint = cpRatchetJointNew(a, b, 0.0, CP_PI/4.0);
+				break;
+			case CONSTRAINT_ROTARY_LIMIT:
+				constraint = cpRotaryLimitJointNew(a, b, -0.1, 0.1);
+				break;
+			case CONSTRAINT_DAMPED_SPRING:
+				constraint = cpDampedSpringNew(a, b, cpvzero, cpvzero, 2.0, 40.0, 2.0);
+				break;
+			case CONSTRAINT_DAMPED_ROTARY_SPRING:
+				constraint = cpDampedRotarySpringNew(a, b, 0.0, 20.0, 1.5);
+				break;
+		}
+		constraint_state->constraints[i] = cpSpaceAddConstraint(space, constraint);
+	}
+	return space;
+}
+
+#define CONSTRAINT_INIT(name, kind) \
+static cpSpace *name(int size, void **state){return init_constraint_benchmark(size, state, kind);}
+
+CONSTRAINT_INIT(init_slide_constraints, CONSTRAINT_SLIDE)
+CONSTRAINT_INIT(init_pivot_constraints, CONSTRAINT_PIVOT)
+CONSTRAINT_INIT(init_groove_constraints, CONSTRAINT_GROOVE)
+CONSTRAINT_INIT(init_gear_constraints, CONSTRAINT_GEAR)
+CONSTRAINT_INIT(init_ratchet_constraints, CONSTRAINT_RATCHET)
+CONSTRAINT_INIT(init_rotary_limit_constraints, CONSTRAINT_ROTARY_LIMIT)
+CONSTRAINT_INIT(init_damped_spring_constraints, CONSTRAINT_DAMPED_SPRING)
+CONSTRAINT_INIT(init_damped_rotary_spring_constraints, CONSTRAINT_DAMPED_ROTARY_SPRING)
+
+static cpFloat
+point_line_segment_distance(cpVect p, cpVect a, cpVect b)
+{
+	return cpvdist(p, cpClosetPointOnSegment(p, a, b));
+}
+
+static cpFloat
+constraint_error_for_kind(ConstraintKind kind, cpConstraint *constraint)
+{
+	cpBody *a = cpConstraintGetBodyA(constraint);
+	cpBody *b = cpConstraintGetBodyB(constraint);
+	switch(kind){
+		case CONSTRAINT_SLIDE: {
+			cpFloat distance = cpvdist(cpBodyLocalToWorld(a, cpSlideJointGetAnchorA(constraint)), cpBodyLocalToWorld(b, cpSlideJointGetAnchorB(constraint)));
+			return cpfmax(cpSlideJointGetMin(constraint) - distance, cpfmax(distance - cpSlideJointGetMax(constraint), 0.0));
+		} case CONSTRAINT_PIVOT:
+			return cpvdist(cpBodyLocalToWorld(a, cpPivotJointGetAnchorA(constraint)), cpBodyLocalToWorld(b, cpPivotJointGetAnchorB(constraint)));
+		case CONSTRAINT_GROOVE: {
+			cpVect anchor = cpBodyLocalToWorld(b, cpGrooveJointGetAnchorB(constraint));
+			cpVect ga = cpBodyLocalToWorld(a, cpGrooveJointGetGrooveA(constraint));
+			cpVect gb = cpBodyLocalToWorld(a, cpGrooveJointGetGrooveB(constraint));
+			return point_line_segment_distance(anchor, ga, gb);
+		} case CONSTRAINT_GEAR:
+			return cpfabs(cpBodyGetAngle(b)*cpGearJointGetRatio(constraint) - cpBodyGetAngle(a) - cpGearJointGetPhase(constraint));
+		case CONSTRAINT_RATCHET: {
+			cpFloat ratchet = cpRatchetJointGetRatchet(constraint);
+			cpFloat delta = cpBodyGetAngle(b) - cpBodyGetAngle(a) - cpRatchetJointGetPhase(constraint);
+			return cpfabs(delta - (cpFloat)round((double)(delta/ratchet))*ratchet);
+		} case CONSTRAINT_ROTARY_LIMIT: {
+			cpFloat angle = cpBodyGetAngle(b) - cpBodyGetAngle(a);
+			return cpfmax(cpRotaryLimitJointGetMin(constraint) - angle, cpfmax(angle - cpRotaryLimitJointGetMax(constraint), 0.0));
+		} case CONSTRAINT_DAMPED_SPRING: {
+			cpFloat distance = cpvdist(cpBodyLocalToWorld(a, cpDampedSpringGetAnchorA(constraint)), cpBodyLocalToWorld(b, cpDampedSpringGetAnchorB(constraint)));
+			return cpfabs(distance - cpDampedSpringGetRestLength(constraint));
+		} case CONSTRAINT_DAMPED_ROTARY_SPRING:
+			return cpfabs((cpBodyGetAngle(a) - cpBodyGetAngle(b)) - cpDampedRotarySpringGetRestAngle(constraint));
+		case CONSTRAINT_PIN: {
+			cpFloat distance = cpvdist(cpBodyLocalToWorld(a, cpPinJointGetAnchorA(constraint)), cpBodyLocalToWorld(b, cpPinJointGetAnchorB(constraint)));
+			return cpfabs(distance - cpPinJointGetDist(constraint));
+		} case CONSTRAINT_SIMPLE_MOTOR:
+			return cpfabs((cpBodyGetAngularVelocity(b) - cpBodyGetAngularVelocity(a)) + cpSimpleMotorGetRate(constraint));
+		case CONSTRAINT_KIND_COUNT:
+			break;
+	}
+	return INFINITY;
+}
+
+static cpFloat
+constraint_error(const ConstraintBenchState *state, cpConstraint *constraint)
+{
+	return constraint_error_for_kind(state->kind, constraint);
+}
+
+static void
+constraint_collect_metrics(ConstraintBenchState *state)
+{
+	for(int i=0; i<state->count; i++){
+		cpConstraint *constraint = state->constraints[i];
+		state->peak_error = cpfmax(state->peak_error, constraint_error(state, constraint));
+		state->peak_impulse = cpfmax(state->peak_impulse, cpfabs(cpConstraintGetImpulse(constraint)));
+	}
+}
+
+static void
+constraint_print_metrics(void *data)
+{
+	ConstraintBenchState *state = (ConstraintBenchState *)data;
+	cpFloat max_error = 0.0;
+	cpFloat sum_error = 0.0;
+	for(int i=0; i<state->count; i++){
+		cpFloat error = constraint_error(state, state->constraints[i]);
+		max_error = cpfmax(max_error, error);
+		sum_error += error;
+	}
+	printf(",\"benchmark_metrics\":{\"constraint_kind\":%d,\"constraint_count\":%d,\"max_error\":%.17g,\"sum_error\":%.17g,\"peak_error\":%.17g,\"peak_impulse\":%.17g}",
+		(int)state->kind, state->count, (double)max_error, (double)sum_error, (double)state->peak_error, (double)state->peak_impulse);
+}
+
+static void
+constraint_destroy_state(void *data)
+{
+	ConstraintBenchState *state = (ConstraintBenchState *)data;
+	free(state->constraints);
+	free(state);
+}
+
+static cpConstraint *
+new_constraint_for_kind(ConstraintKind kind, cpBody *a, cpBody *b)
+{
+	switch(kind){
+		case CONSTRAINT_SLIDE: return cpSlideJointNew(a, b, cpvzero, cpvzero, 0.8, 1.4);
+		case CONSTRAINT_PIVOT: return cpPivotJointNew2(a, b, cpv(0.6, 0.0), cpv(-0.6, 0.0));
+		case CONSTRAINT_GROOVE: return cpGrooveJointNew(a, b, cpv(-0.8, 0.0), cpv(0.8, 0.0), cpv(-0.6, 0.0));
+		case CONSTRAINT_GEAR: return cpGearJointNew(a, b, 0.0, 2.0);
+		case CONSTRAINT_RATCHET: return cpRatchetJointNew(a, b, 0.0, CP_PI/4.0);
+		case CONSTRAINT_ROTARY_LIMIT: return cpRotaryLimitJointNew(a, b, -0.1, 0.1);
+		case CONSTRAINT_DAMPED_SPRING: return cpDampedSpringNew(a, b, cpvzero, cpvzero, 1.0, 35.0, 2.0);
+		case CONSTRAINT_DAMPED_ROTARY_SPRING: return cpDampedRotarySpringNew(a, b, 0.0, 18.0, 1.5);
+		case CONSTRAINT_PIN: return cpPinJointNew(a, b, cpvzero, cpvzero);
+		case CONSTRAINT_SIMPLE_MOTOR: return cpSimpleMotorNew(a, b, 0.8);
+		case CONSTRAINT_KIND_COUNT: break;
+	}
+	return NULL;
+}
+
+static cpSpace *
+init_constraint_mix(int size, void **state)
+{
+	cpSpace *space = new_space(0.0, -12.0);
+	cpSpaceSetSleepTimeThreshold(space, 0.4);
+	cpSpaceSetIdleSpeedThreshold(space, 0.2);
+	cpShape *ground = add_static_segment(space, cpv(-100.0, 0.0), cpv(100.0, 0.0), 0.5);
+	cpShapeSetFriction(ground, 0.8);
+
+	ConstraintMixState *mix = (ConstraintMixState *)calloc(1, sizeof(ConstraintMixState));
+	if(!mix){fprintf(stderr, "Out of memory.\n"); exit(1);}
+	mix->count = size;
+	mix->constraints = (cpConstraint **)calloc((size_t)size, sizeof(cpConstraint *));
+	mix->kinds = (ConstraintKind *)calloc((size_t)size, sizeof(ConstraintKind));
+	mix->dynamic_bodies = (cpBody **)calloc((size_t)size, sizeof(cpBody *));
+	if(!mix->constraints || !mix->kinds || !mix->dynamic_bodies){fprintf(stderr, "Out of memory.\n"); exit(1);}
+	*state = mix;
+
+	for(int i=0; i<size; i++){
+		ConstraintKind kind = (ConstraintKind)(i % CONSTRAINT_KIND_COUNT);
+		cpFloat x = (cpFloat)(i % 25)*3.5 - 42.0;
+		cpFloat y = 2.0 + (cpFloat)(i/25)*3.0;
+		cpBody *a;
+		if(i % 3 == 1){
+			a = cpSpaceAddBody(space, cpBodyNewStatic());
+		} else if(i % 3 == 2){
+			a = cpSpaceAddBody(space, cpBodyNewKinematic());
+			cpBodySetVelocity(a, cpv(0.15, 0.0));
+			cpBodySetAngularVelocity(a, 0.1);
+		} else {
+			a = cpSpaceAddBody(space, cpBodyNew(1.0, 1.0));
+			cpBodySetVelocity(a, cpv(0.2, 0.0));
+			cpBodySetAngularVelocity(a, 0.25);
+		}
+		cpBody *b = cpSpaceAddBody(space, cpBodyNew(1.0, 1.0));
+		cpBodySetPosition(a, cpv(x, y));
+		cpBodySetPosition(b, cpv(x + 1.7, y + 0.25));
+		cpBodySetAngle(a, 0.2);
+		cpBodySetAngle(b, -0.25);
+		cpBodySetVelocity(b, cpv(-0.3, -0.05));
+		cpBodySetAngularVelocity(b, -0.35);
+
+		cpShape *shapeA = cpSpaceAddShape(space, cpCircleShapeNew(a, 0.45, cpvzero));
+		cpShape *shapeB = cpSpaceAddShape(space, cpBoxShapeNew(b, 0.9, 0.9, 0.0));
+		cpShapeSetFriction(shapeA, 0.7);
+		cpShapeSetFriction(shapeB, 0.7);
+		cpShapeSetDensity(shapeB, 1.0);
+
+		mix->kinds[i] = kind;
+		mix->dynamic_bodies[i] = b;
+		mix->constraints[i] = cpSpaceAddConstraint(space, new_constraint_for_kind(kind, a, b));
+	}
+	return space;
+}
+
+static void
+constraint_mix_collect_metrics(ConstraintMixState *mix)
+{
+	for(int i=0; i<mix->count; i++){
+		ConstraintKind kind = mix->kinds[i];
+		cpConstraint *constraint = mix->constraints[i];
+		mix->peak_error[kind] = cpfmax(mix->peak_error[kind], constraint_error_for_kind(kind, constraint));
+		mix->peak_impulse[kind] = cpfmax(mix->peak_impulse[kind], cpfabs(cpConstraintGetImpulse(constraint)));
+	}
+}
+
+static void
+constraint_mix_update(cpSpace *space, void *data, cpFloat dt)
+{
+	ConstraintMixState *mix = (ConstraintMixState *)data;
+	cpSpaceStep(space, dt);
+	mix->step++;
+	if(mix->step == 179){
+		for(int i=0; i<mix->count; i++){
+			if(cpBodyIsSleeping(mix->dynamic_bodies[i])){
+				mix->wake_body = mix->dynamic_bodies[i];
+				mix->wake_body_was_sleeping = cpTrue;
+				break;
+			}
+		}
+	}
+	if(mix->step == 180 && mix->wake_body) cpBodyApplyImpulseAtLocalPoint(mix->wake_body, cpv(20.0, 10.0), cpvzero);
+	if(mix->step == 181 && mix->wake_body) mix->wake_body_is_awake = !cpBodyIsSleeping(mix->wake_body);
+}
+
+static void
+constraint_mix_print_metrics(void *data)
+{
+	ConstraintMixState *mix = (ConstraintMixState *)data;
+	int counts[CONSTRAINT_KIND_COUNT] = {0};
+	cpFloat max_error[CONSTRAINT_KIND_COUNT] = {0};
+	cpFloat sum_error[CONSTRAINT_KIND_COUNT] = {0};
+	for(int i=0; i<mix->count; i++){
+		ConstraintKind kind = mix->kinds[i];
+		cpFloat error = constraint_error_for_kind(kind, mix->constraints[i]);
+		counts[kind]++;
+		max_error[kind] = cpfmax(max_error[kind], error);
+		sum_error[kind] += error;
+	}
+	printf(",\"benchmark_metrics\":{\"constraint_count\":%d,\"type_count\":%d,\"wake_body_was_sleeping\":%s,\"wake_body_is_awake\":%s,\"per_type\":[", mix->count, CONSTRAINT_KIND_COUNT, mix->wake_body_was_sleeping ? "true" : "false", mix->wake_body_is_awake ? "true" : "false");
+	for(int kind=0; kind<CONSTRAINT_KIND_COUNT; kind++){
+		if(kind) printf(",");
+		printf("{\"constraint_kind\":%d,\"constraint_count\":%d,\"max_error\":%.17g,\"sum_error\":%.17g,\"peak_error\":%.17g,\"peak_impulse\":%.17g}",
+			kind, counts[kind], (double)max_error[kind], (double)sum_error[kind], (double)mix->peak_error[kind], (double)mix->peak_impulse[kind]);
+	}
+	printf("]}");
+}
+
+static void
+constraint_mix_destroy_state(void *data)
+{
+	ConstraintMixState *mix = (ConstraintMixState *)data;
+	free(mix->constraints);
+	free(mix->kinds);
+	free(mix->dynamic_bodies);
+	free(mix);
+}
+
 // Smoke and reference batches target practical sample durations on the reference host.
 static Benchmark benchmarks[] = {
 	{"FallingSquares", 1300, 300, 10, 50, 300, 10, 1, 1, init_falling_squares, default_update, NULL, NULL},
@@ -844,6 +1172,15 @@ static Benchmark benchmarks[] = {
 	{"CollisionCallbacks", 600, 240, 24, 60, 240, 12, 20, 20, init_collision_callbacks, default_update, callback_destroy_state, callback_print_metrics},
 	{"SleepWake", 420, 200, 20, 50, 200, 10, 200, 100, init_sleep_wake, sleep_wake_update, sleep_wake_destroy_state, NULL},
 	{"SurfaceVelocity", 600, 240, 24, 60, 240, 12, 20, 20, init_surface_velocity, default_update, NULL, NULL},
+	{"SlideConstraints", 600, 2000, 50, 500, 2000, 50, 20, 4, init_slide_constraints, default_update, constraint_destroy_state, constraint_print_metrics},
+	{"PivotConstraints", 600, 2000, 50, 500, 2000, 50, 20, 4, init_pivot_constraints, default_update, constraint_destroy_state, constraint_print_metrics},
+	{"GrooveConstraints", 600, 2000, 50, 500, 2000, 50, 20, 4, init_groove_constraints, default_update, constraint_destroy_state, constraint_print_metrics},
+	{"GearConstraints", 600, 4000, 100, 1000, 4000, 100, 30, 8, init_gear_constraints, default_update, constraint_destroy_state, constraint_print_metrics},
+	{"RatchetConstraints", 600, 4000, 100, 1000, 4000, 100, 30, 8, init_ratchet_constraints, default_update, constraint_destroy_state, constraint_print_metrics},
+	{"RotaryLimitConstraints", 600, 4000, 100, 1000, 4000, 100, 30, 8, init_rotary_limit_constraints, default_update, constraint_destroy_state, constraint_print_metrics},
+	{"DampedSpringConstraints", 600, 2000, 50, 500, 2000, 50, 20, 4, init_damped_spring_constraints, default_update, constraint_destroy_state, constraint_print_metrics},
+	{"DampedRotarySpringConstraints", 600, 4000, 100, 1000, 4000, 100, 30, 8, init_damped_rotary_spring_constraints, default_update, constraint_destroy_state, constraint_print_metrics},
+	{"ConstraintMix", 600, 2000, 100, 500, 2000, 100, 10, 2, init_constraint_mix, constraint_mix_update, constraint_mix_destroy_state, constraint_mix_print_metrics},
 };
 
 static int benchmark_count = (int)(sizeof(benchmarks)/sizeof(benchmarks[0]));
@@ -1188,6 +1525,8 @@ run_summary_json(Benchmark *benchmark, int size, const int *input_checkpoints, i
 
 	for(int step = 1; step <= simulated_steps; step++){
 		benchmark->update(space, state, (cpFloat)(1.0/FPS));
+		if(benchmark->print_metrics == constraint_print_metrics) constraint_collect_metrics((ConstraintBenchState *)state);
+		if(benchmark->print_metrics == constraint_mix_print_metrics) constraint_mix_collect_metrics((ConstraintMixState *)state);
 		if(checkpoint_index < checkpoint_count && checkpoints[checkpoint_index] == step){
 			if(checkpoint_index > 0) printf(",");
 			Summary summary = collect_summary(space, step);

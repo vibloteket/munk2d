@@ -124,6 +124,19 @@ optimizations and require an explicit design decision before implementation. The
 envelope is intended primarily for mathematically equivalent implementation changes
 whose floating-point ordering or deterministic processing order differs.
 
+
+## Constraint coverage
+
+MunkBench includes focused, collision-free scenarios for each built-in constraint
+type not isolated by the original suite: slide, pivot, groove, gear, ratchet,
+rotary limit, damped spring, and damped rotary spring. `BigMobile` covers pin
+joints and `Tumbler` covers a simple motor plus a pin joint.
+
+Each focused scenario reports final and peak constraint error plus peak impulse.
+This verifies that the solver is active and provides type-specific correctness
+signals for future optimization work. The eight scenarios use all three size
+profiles and plus an integrated `ConstraintMix` workload bring `munkbench-v5` to 26 scenarios. `ConstraintMix` interleaves all ten types with dynamic, static, and kinematic bodies, collision shapes, frictional contacts, and sleeping/wake behavior.
+
 ## SVG snapshots
 
 A selected benchmark can be rendered to SVG for visual comparison:
@@ -147,7 +160,7 @@ bun benchmarks/tools/record-results.ts \
 ```
 
 Defaults are two warm-ups, ten samples, the `reference` profile with calibrated
-automatic batches, protocol `munkbench-v4`, and remote branch
+automatic batches, protocol `munkbench-v5`, and remote branch
 `origin/benchmark-data`. Version 2 adds
 non-zero-friction, collision-callback, and sleep/wake coverage. The working tree must
 be clean. Use `--dry-run --output run.json` to validate and inspect a record
@@ -157,5 +170,5 @@ Recorded paths are organized by environment, protocol, year, timestamp, and
 commit. Changing the machine, compiler baseline, benchmark workload, or timing
 semantics should start a new environment or protocol series instead of silently
 continuing an incompatible graph. The current versioned format is documented by
-[`results-schema-v4.json`](results-schema-v4.json). Earlier schemas remain in the
-repository for historical 13-scenario records.
+[`results-schema-v5.json`](results-schema-v5.json). Earlier schemas remain in the
+repository for historical 13- and 17-scenario records.

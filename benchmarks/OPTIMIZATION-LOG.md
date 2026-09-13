@@ -132,6 +132,7 @@ quality/performance tradeoffs require explicit approval before implementation.
 - [#15](https://github.com/vibloteket/munk2d/pull/15): add FrictionalPyramid, CollisionCallbacks, and SleepWake; protocol `munkbench-v2` has 16 scenarios.
 - SurfaceVelocity adds a permanent non-zero surface-velocity counterexample; protocol `munkbench-v3` has 17 scenarios.
 - SurfaceVelocity adds a conveyor-style non-zero surface-velocity control; protocol `munkbench-v3` has 17 scenarios.
+- Focused coverage for Slide, Pivot, Groove, Gear, Ratchet, Rotary Limit, Damped Spring, and Damped Rotary Spring plus integrated `ConstraintMix` brings `munkbench-v5` to 26 scenarios. BigMobile and Tumbler also cover Pin Joint and Simple Motor.
 - A permanent CI change disabling third-party APT repositories was rejected; transient mirror failures should be rerun.
 
 ## Current profile notes
