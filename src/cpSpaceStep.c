@@ -382,6 +382,7 @@ cpSpaceStep(cpSpace *space, cpFloat dt)
 	}
 	arbiters->num = 0;
 
+	int arbiterCountBeforeUnlock;
 	cpSpaceLock(space); {
 		// Integrate positions
 		for(int i=0; i<bodies->num; i++){
@@ -393,7 +394,15 @@ cpSpaceStep(cpSpace *space, cpFloat dt)
 		cpSpacePushFreshContactBuffer(space);
 		cpSpatialIndexEach(space->dynamicShapes, (cpSpatialIndexIteratorFunc)cpShapeUpdateFunc, NULL);
 		cpSpatialIndexReindexQuery(space->dynamicShapes, (cpSpatialIndexQueryFunc)cpSpaceCollideShapes, space);
+		arbiterCountBeforeUnlock = arbiters->num;
 	} cpSpaceUnlock(space, cpFalse);
+
+	// Callback wake-ups can restore sleeping arbiters during unlock. Their
+	// saved graph links must be removed before ProcessComponents rethreads them.
+	// Other unlock sites keep those links because no graph rebuild follows.
+	for(int i=arbiterCountBeforeUnlock; i<arbiters->num; i++){
+		cpArbiterUnthread((cpArbiter *)arbiters->arr[i]);
+	}
 	
 	// Rebuild the contact graph (and detect sleeping components if sleeping is enabled)
 	cpSpaceProcessComponents(space, dt);
