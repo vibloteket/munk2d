@@ -67,7 +67,7 @@ applyImpulse(cpPivotJoint *joint, cpFloat dt)
 	j = cpvsub(joint->jAcc, jOld);
 	
 	// apply impulse
-	apply_impulses(a, b, joint->r1, joint->r2, j);
+	apply_impulses(a, b, r1, r2, j);
 }
 
 static cpFloat
