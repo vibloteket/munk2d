@@ -144,6 +144,14 @@ quality/performance tradeoffs require explicit approval before implementation.
 - Benchmark cleanup now wakes sleeping components before collecting constraints, fixing a baseline `ConstraintMix` smoke leak of 2,656 bytes in 11 constraints. A CTest regression covers active/sleeping constraints with and without shapes and actual mix teardown at steps 0/181/600. Empty contact summaries also avoid `qsort(NULL, 0, ...)`. All 26 smoke/reference summaries remain byte-exact; strict ASan/LSan/UBSan passes. This is a benchmark correctness fix, not an engine optimization.
 - A permanent CI change disabling third-party APT repositories was rejected; transient mirror failures should be rerun.
 
+## Pending: sleep/wake bookkeeping (correctness only, 2026-09-13)
+
+- Baseline `f93559a`. Performance runs are explicitly on hold while the user's server is busy; no MunkBench runs or profiling were performed.
+- Prototype: replace the locked wake queue's linear membership guard with a Debug-only uniqueness assertion and unconditional append. `cpBodyActivate` clears component links before queueing; repeated activation cannot requeue the component through that path.
+- Prototype: remove the second, redundant `dynamicBodies` deletion at the end of `cpBodySleepWithGroup`.
+- New `chipmunk_sleep_wake_tests` covers explicit sleep, grouped/shapeless bodies, nested query callbacks, repeated activation, post-step ordering, contact copying, and collision-callback wake of shapeless components. Baseline, queue-only and combined versions pass Debug/Release CTest; deterministic targeted state traces match baseline byte-for-byte. Combined tests pass strict ASan/LSan/UBSan. This is not full MunkBench validation or performance acceptance.
+- Separate baseline bug found by the tests: waking a sleeping body with an existing contact from `preSolve` can assert while rebuilding the contact graph. The optional test argument `--repro-contact-wake` reproduces it before and after the prototypes; it is intentionally not a passing CTest case. Investigate separately rather than attributing it to the queue change.
+
 ## Current profile notes
 
 - `cpArbiterApplyImpulse` remains the largest contact-heavy hotspot (roughly 36–59% self time).
