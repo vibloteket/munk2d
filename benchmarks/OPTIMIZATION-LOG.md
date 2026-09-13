@@ -148,6 +148,15 @@ quality/performance tradeoffs require explicit approval before implementation.
 - Benchmark cleanup now wakes sleeping components before collecting constraints, fixing a baseline `ConstraintMix` smoke leak of 2,656 bytes in 11 constraints. A CTest regression covers active/sleeping constraints with and without shapes and actual mix teardown at steps 0/181/600. Empty contact summaries also avoid `qsort(NULL, 0, ...)`. All 26 smoke/reference summaries remain byte-exact; strict ASan/LSan/UBSan passes. This is a benchmark correctness fix, not an engine optimization.
 - A permanent CI change disabling third-party APT repositories was rejected; transient mirror failures should be rerun.
 
+## Sleep/wake bookkeeping measurements (2026-09-13)
+
+- Baseline `c1fd277`, including the callback/contact-wake correctness fix in PR #47. Tested wake-queue scan removal, redundant explicit-sleep deletion removal, and their combination independently. The wake queue retains a Debug uniqueness assertion; no body/constraint layout changes or physics shortcuts are involved.
+- Local i5-12400T, GCC 15.2, Release/LTO, CPU 2 affinity. Nine alternating lifecycle pairs plus A/A controls, four sizes (100/1,000/5,000/10,000), identical body counts and iteration checksums. `tools/sleep-wake-lifecycle.c` exercises the public API, timing only sleep or wake; setup, validation and cleanup are excluded. Bodies have no shapes/constraints; one static query shape triggers locked wake. These are isolated lifecycle measurements, not complete simulation speedups.
+- At 10,000 bodies, the combined candidate changed queued wake from 12.320 ms to 0.113 ms (about 109x) and explicit sleep from 18.382 ms to 6.234 ms (about 2.95x). Queue-only retains the queued-wake gain; sleep-only retains the sleep gain.
+- Tradeoff: the unlocked-wake control at 10,000 bodies changed from 0.0672 ms to 0.0739 ms (about +10%, roughly +7 microseconds). This must not be hidden by quoting only the favorable operations.
+- Eight alternating smoke/reference MunkBench pairs plus A/A controls: ordinary contact/integration cases are mostly within roughly half a percent. The combined reference run had isolated Gear/Ratchet/Rotary Limit regressions of +1.32/+2.04/+1.71%; a separate 12-pair focused follow-up measured +0.28/+0.57/+0.02%, with substantial A/A variation. Mixed ConstraintMix was near neutral. Results are not uniformly positive and should be judged as a bounded tradeoff against the demonstrated lifecycle scaling wins, not as a universal frame-time gain.
+- All three candidates passed CTest and byte-exact summaries for all 26 smoke/reference scenarios at 0,1,10,50,180,181,final, with deterministic repeats. PR #47's standard/HastySpace callback graph tests are retained. No previously rejected floating-point or quality tradeoff is included.
+
 ## Current profile notes
 
 - `cpArbiterApplyImpulse` remains the largest contact-heavy hotspot (roughly 36–59% self time).

@@ -81,6 +81,32 @@ Output is CSV, with one row per raw sample:
 version,benchmark,size,sample,batch,init_time,run_time
 ```
 
+## Isolated sleep/wake lifecycle measurements
+
+`tools/sleep-wake-lifecycle.c` is a separate POSIX microbenchmark, not a new
+scenario in the versioned MunkBench protocol. It exercises the public API with
+shape-less, constraint-less bodies in one sleeping group. A static query shape
+provides the callback used for locked wake. Use the same compiler, harness and
+build flags for baseline and candidate:
+
+```sh
+cc -O3 -DNDEBUG -Iinclude benchmarks/tools/sleep-wake-lifecycle.c \
+  build/src/libchipmunk.a -lm -o build/sleep-wake-lifecycle
+./build/sleep-wake-lifecycle queued 10000 3
+./build/sleep-wake-lifecycle sleep 10000 3
+./build/sleep-wake-lifecycle unlocked 10000 3
+```
+
+Arguments are mode, body count and independent repetitions. Each output row is
+`mode,bodies,repetitions,total_seconds,body_order_checksum`. Divide time by the
+repetition count for per-operation time. `queued` includes the query, callback,
+queue insertion and activation at unlock; `unlocked` is the control without the
+queue; `sleep` measures the explicit sleep loop. Initialization, correctness
+checks and cleanup are excluded. Counts, wake state and iteration checksum must
+match across variants. These timings do not predict total frame time or contact-
+heavy wake costs. Always measure normal MunkBench controls as well, and alternate
+baseline/candidate execution order.
+
 ## Validation summaries
 
 MunkBench can emit checkpoint summaries for stability/correctness validation:
