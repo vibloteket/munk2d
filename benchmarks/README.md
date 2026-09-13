@@ -93,10 +93,13 @@ The summary run stops at the last requested checkpoint, keeping smoke tests fast
 Use `final` as a checkpoint to run through the benchmark's configured final step.
 The JSON reports both configured `steps` and actual `simulated_steps`.
 
-The JSON includes body, shape, constraint, contact-pair and contact-point counts,
-dynamic body bounds, shape bounds, aggregate position and velocity sums, kinetic
-energy, max velocities, sleeping body counts, and an `invalid_values` count for
-NaN/Inf detection.
+The JSON includes body, shape, active-constraint, contact-pair and contact-point
+counts, dynamic body bounds, shape bounds, aggregate position and velocity sums,
+kinetic energy, max velocities, sleeping body counts, and an `invalid_values`
+count for NaN/Inf detection. `constraints` counts only constraints in the active
+solver list; constraints belonging to sleeping components remain owned by the
+space but are temporarily absent from that list. Scenario metrics such as
+`ConstraintMix.constraint_count` report the total constraints created and owned.
 
 ### Behavior-envelope comparison
 
