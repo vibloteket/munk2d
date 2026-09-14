@@ -204,12 +204,6 @@ static const cpShapeClass polyClass = {
 	(cpShapeSegmentQueryImpl)cpPolyShapeSegmentQuery,
 };
 
-// Keep the polygon loop out of the small circle/segment dispatch hot path.
-#if defined(__GNUC__) || defined(__clang__)
-__attribute__((noinline))
-#elif defined(_MSC_VER)
-__declspec(noinline)
-#endif
 cpBool
 cpPolyShapePointQueryWithin(const cpShape *shape, cpVect p, cpFloat maxDistance, cpPointQueryInfo *info)
 {
