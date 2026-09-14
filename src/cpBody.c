@@ -324,24 +324,15 @@ cpBodyRemoveShape(cpBody *body, cpShape *shape)
 	}
 }
 
-static cpConstraint *
-filterConstraints(cpConstraint *node, cpBody *body, cpConstraint *filter)
-{
-	if(node == filter){
-		return cpConstraintNext(node, body);
-	} else if(node->a == body){
-		node->next_a = filterConstraints(node->next_a, body, filter);
-	} else {
-		node->next_b = filterConstraints(node->next_b, body, filter);
-	}
-	
-	return node;
-}
-
 void
 cpBodyRemoveConstraint(cpBody *body, cpConstraint *constraint)
 {
-	body->constraintList = filterConstraints(body->constraintList, body, constraint);
+	cpConstraint **link = &body->constraintList;
+	while(*link != constraint){
+		cpConstraint *node = *link;
+		link = (node->a == body ? &node->next_a : &node->next_b);
+	}
+	*link = cpConstraintNext(constraint, body);
 }
 
 // 'p' is the position of the CoG

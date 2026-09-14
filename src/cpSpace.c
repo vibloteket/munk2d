@@ -419,7 +419,7 @@ cpSpaceAddConstraint(cpSpace *space, cpConstraint *constraint)
 	
 	cpBodyActivate(a);
 	cpBodyActivate(b);
-	cpArrayPush(space->constraints, constraint);
+	cpSpacePushConstraint(space, constraint);
 	
 	// Push onto the heads of the bodies' constraint lists
 	constraint->next_a = a->constraintList; a->constraintList = constraint;
@@ -521,7 +521,7 @@ cpSpaceRemoveConstraint(cpSpace *space, cpConstraint *constraint)
 	
 	cpBodyActivate(constraint->a);
 	cpBodyActivate(constraint->b);
-	cpArrayDeleteObj(space->constraints, constraint);
+	cpSpaceRemoveConstraintFromArray(space, constraint);
 	
 	cpBodyRemoveConstraint(constraint->a, constraint);
 	cpBodyRemoveConstraint(constraint->b, constraint);

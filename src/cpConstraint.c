@@ -52,6 +52,9 @@ cpConstraintInit(cpConstraint *constraint, const cpConstraintClass *klass, cpBod
 	constraint->maxBias = (cpFloat)INFINITY;
 	
 	constraint->collideBodies = cpTrue;
+#ifdef CP_CONSTRAINT_ARRAY_INDEX
+	constraint->activeIndex = -1;
+#endif
 	
 	constraint->preSolve = NULL;
 	constraint->postSolve = NULL;

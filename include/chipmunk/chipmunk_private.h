@@ -302,6 +302,33 @@ void cpSpaceLock(cpSpace *space);
 void cpSpaceUnlock(cpSpace *space, cpBool runPostStep);
 
 static inline void
+cpSpacePushConstraint(cpSpace *space, cpConstraint *constraint)
+{
+#ifdef CP_CONSTRAINT_ARRAY_INDEX
+	constraint->activeIndex = space->constraints->num;
+#endif
+	cpArrayPush(space->constraints, constraint);
+}
+
+static inline void
+cpSpaceRemoveConstraintFromArray(cpSpace *space, cpConstraint *constraint)
+{
+#ifdef CP_CONSTRAINT_ARRAY_INDEX
+	cpArray *array = space->constraints;
+	int index = constraint->activeIndex;
+	if(index < 0) return;
+	cpAssertSoft(index < array->num && array->arr[index] == constraint, "Internal error: Invalid constraint array index.");
+	cpConstraint *last = (cpConstraint *)array->arr[--array->num];
+	array->arr[index] = last;
+	last->activeIndex = index;
+	array->arr[array->num] = NULL;
+	constraint->activeIndex = -1;
+#else
+	cpArrayDeleteObj(space->constraints, constraint);
+#endif
+}
+
+static inline void
 cpSpaceUncacheArbiter(cpSpace *space, cpArbiter *arb)
 {
 	const cpShape *a = arb->a, *b = arb->b;

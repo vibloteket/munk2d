@@ -117,6 +117,33 @@ across variants. These timings do not predict total frame time, complete teardow
 or contact-heavy wake costs. Always measure normal MunkBench controls as well,
 and alternate baseline/candidate execution order.
 
+## Isolated constraint lifecycle measurements
+
+`tools/constraint-lifecycle.c` measures constraint bookkeeping separately from
+physics stepping. `hub` gives each constraint its own dynamic body connected to
+one shared static anchor; `parallel` puts all constraints between the same static
+anchor and one dynamic body. Both alternate A/B orientation. No shapes or physics
+steps are involved. Compile the same harness against each variant's library:
+
+```sh
+cc -O3 -DNDEBUG -Iinclude benchmarks/tools/constraint-lifecycle.c \
+  build/src/libchipmunk.a -lm -o build/constraint-lifecycle
+./build/constraint-lifecycle oldest hub 4096 3
+./build/constraint-lifecycle newest hub 4096 3
+./build/constraint-lifecycle sleep parallel 4096 3
+./build/constraint-lifecycle wake parallel 4096 3
+```
+
+Arguments are mode, topology, constraint count and independent repetitions.
+`oldest`/`newest` remove constraints in creation/reverse-creation order; `sleep`
+measures explicit body sleep and `wake` measures subsequent activation. Setup,
+validation and cleanup are outside the timer. Output is
+`mode,topology,constraints,repetitions,total_seconds,order_checksum`.
+Divide by repetitions for per-operation time. Compare checksums and record both
+favorable operations and wake/normal-simulation controls; these are not solver
+or whole-frame speedups. This optional POSIX harness does not change MunkBench's
+versioned scenario protocol.
+
 ## Validation summaries
 
 MunkBench can emit checkpoint summaries for stability/correctness validation:
