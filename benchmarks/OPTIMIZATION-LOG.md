@@ -209,6 +209,18 @@ quality/performance tradeoffs require explicit approval before implementation.
 - Controls at10,000: always-first removal0.0979->0.0978ms, random removal6.262->6.282ms (paired median near zero), automatic-sleep step0.3159->0.3151ms. Smaller first/auto-sleep controls showed small costs up to roughly0.8%; no claim that every order improves.
 - Six alternating smoke/reference MunkBench pairs plus A/A: contact/integration scenes mostly within a few tenths of a percent. Initial isolated DampedRotarySpring smoke+1.63% and Ratchet reference+1.25% were not stable in a12-pair follow-up; follow-up DampedRotary reference+1.00% coincided with A/A+1.40%. ConstraintMix remained near neutral. Keep such tiny/layout-sensitive changes separate from the demonstrated elimination of long array scans.
 
+## Nearest-point queries: defer unused point/gradient output (2026-09-14)
+
+- Baseline: `280c011` (PR #53 merged). Scope is **nearest only**: `cpSpacePointQuery` (all hits), `cpSpaceShapeQuery`, public signatures, all structure layouts, and existing shape-method signatures remain unchanged.
+- Calculate the same signed distance, then construct point/gradient only for a strict improvement. Keep the original BB, dynamic/static traversal order, rounded polygon-feature ties, zero-distance fallbacks and full-query non-finite outputs. Nonstandard private classes use the original full-query fallback.
+- Small circle/segment paths are inlined into the nearest visitor with GCC/Clang `flatten`; the bounded polygon loop stays separate via `noinline`. This avoids the dispatch overhead observed in earlier prototypes. No persistent storage or allocations are added.
+- Supplementary benchmark: `tools/point-query.c`. GCC 15.2, Release/LTO, i5-12400T, CPU 2; seven alternating AB/BA pairs and A/A per case; identical output hash, hit count and sum required. Cached grid snapshots, not complete frames or Python/FFI timing.
+- At 1024 shapes, nearest radii 16 / 64 / infinity: circles **-8.26 / -16.54 / -17.74%**; segments **-12.76 / -18.47 / -23.62%**; boxes **-2.25 / -2.26 / -2.32%**; 16-gons **+1.75 / +0.66 / +1.05%**; equal mixtures **+0.75 / -2.53 / -0.80%**. Negative means faster. At 64 shapes/infinity, circles -21.97%, segments -23.29%, mixture -2.86%.
+- **Limits:** small-radius cases do not reliably benefit. At radius 4, circle nearest -0.73%, mixed nearest +1.96% (A/A +0.89 / +0.27%). Direct shape-query controls -0.60..+0.13%; unchanged all-hit controls -1.01..+1.33%. These results do not establish a universal point-query speedup.
+- Release and strict ASan/UBSan: 10/10 CTests; all 26 smoke/reference summaries byte-identical to baseline and repeated exactly. ASan smoke also matches after removing its Debug startup banner. C++11 query regression and alternate hash/bool/collision/group/bitmask/timestamp types pass. Float passes 9/10 targets, including both query targets; the basic slerp and finite-force groove assertions fail identically on untouched baseline.
+- Ordinary MunkBench: six alternating pairs + A/A; initial Gear smoke +1.53% and RotaryLimit reference +1.89% became +0.83 / +0.15% in twelve-pair follow-up. ConstraintMix follow-up -0.06 / -0.22%. No general stepping improvement claimed.
+- Rejected: circle-only dispatch taxed segments; passing a cutoff through the existing result field regressed direct circle queries 12.61% and several all-hit cases 2–6%; applying bounded materialization to all-hit queries regressed polygon cases up to 6%. The accepted scope avoids changing the existing callback contract and leaves all-hit traversal unchanged.
+
 ## Current profile notes
 
 - `cpArbiterApplyImpulse` remains the largest contact-heavy hotspot (roughly 36–59% self time).

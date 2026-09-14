@@ -321,3 +321,31 @@ Setup, state validation, freeing and cleanup are excluded. Output is
 `mode,bodies,repeats,total_seconds,iteration_checksum`; divide time by repeats
 for per-operation totals and verify matching checksums. This POSIX tool does not
 change MunkBench's versioned protocol or represent general frame-time gains.
+
+### Supplementary point-query microbenchmark
+
+`tools/point-query.c` times cached query snapshots separately from MunkBench's
+versioned stepping protocol. Build against each comparison library with identical
+flags, pin to the same CPU, alternate AB/BA order, and include A/A controls:
+
+```sh
+cc -O3 -DNDEBUG -Iinclude benchmarks/tools/point-query.c build/src/libchipmunk.a -lm -o build/point-query
+taskset -c 2 build/point-query nearest circle 1024 16 100000
+taskset -c 2 build/point-query nearest segment 1024 inf 5000
+taskset -c 2 build/point-query all mixed 1024 4 100000
+taskset -c 2 build/point-query shape poly16 1 inf 1000000
+```
+
+Arguments: `all|nearest|shape`, `circle|segment|box|poly16|mixed`, shape count,
+maximum distance (`inf` is supported), query count. Direct `shape` queries ignore
+the maximum distance. Output is
+`api,kind,shapes,max_distance,queries,total_seconds,warm_hash,timed_hits,timed_sum`.
+Require matching hash/count/sum across variants; divide seconds by query count.
+
+The fixed 256-point sequence queries a grid with spacing 4. Half the shapes use
+the static index and half the dynamic index (sharing one body). Setup, warm-up,
+hashing and cleanup are outside timing; the timed callback only counts hits and
+accumulates distance. This excludes moving-body/index-update work, Python/FFI
+costs, and application frame times. Test small and large **finite** radii as well
+as infinity, and retain polygon, mixed, all-hit and direct-shape controls. See
+`OPTIMIZATION-LOG.md` for measured gains and workload-specific regressions.

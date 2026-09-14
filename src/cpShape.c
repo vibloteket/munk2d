@@ -297,10 +297,8 @@ cpCircleShapeCacheData(cpCircleShape *circle, cpTransform transform)
 }
 
 static void
-cpCircleShapePointQuery(cpCircleShape *circle, cpVect p, cpPointQueryInfo *info)
+cpCircleShapePointQueryInfo(const cpCircleShape *circle, cpVect delta, cpFloat d, cpPointQueryInfo *info)
 {
-	cpVect delta = cpvsub(p, circle->tc);
-	cpFloat d = cpvlength(delta);
 	cpFloat r = circle->r;
 	
 	info->shape = (cpShape *)circle;
@@ -310,6 +308,13 @@ cpCircleShapePointQuery(cpCircleShape *circle, cpVect p, cpPointQueryInfo *info)
 	
 	// Use up for the gradient if the distance is very small.
 	info->gradient = (d > MAGIC_EPSILON ? cpvmult(delta, 1.0f/d) : cpv(0.0f, 1.0f));
+}
+
+static void
+cpCircleShapePointQuery(cpCircleShape *circle, cpVect p, cpPointQueryInfo *info)
+{
+	cpVect delta = cpvsub(p, circle->tc);
+	cpCircleShapePointQueryInfo(circle, delta, cpvlength(delta), info);
 }
 
 static void
@@ -406,12 +411,8 @@ cpSegmentShapeCacheData(cpSegmentShape *seg, cpTransform transform)
 }
 
 static void
-cpSegmentShapePointQuery(cpSegmentShape *seg, cpVect p, cpPointQueryInfo *info)
+cpSegmentShapePointQueryInfo(const cpSegmentShape *seg, cpVect closest, cpVect delta, cpFloat d, cpPointQueryInfo *info)
 {
-	cpVect closest = cpClosetPointOnSegment(p, seg->ta, seg->tb);
-	
-	cpVect delta = cpvsub(p, closest);
-	cpFloat d = cpvlength(delta);
 	cpFloat r = seg->r;
 	cpVect g = cpvmult(delta, 1.0f/d);
 	
@@ -421,6 +422,14 @@ cpSegmentShapePointQuery(cpSegmentShape *seg, cpVect p, cpPointQueryInfo *info)
 	
 	// Use the segment's normal if the distance is very small.
 	info->gradient = (d > MAGIC_EPSILON ? g : seg->n);
+}
+
+static void
+cpSegmentShapePointQuery(cpSegmentShape *seg, cpVect p, cpPointQueryInfo *info)
+{
+	cpVect closest = cpClosetPointOnSegment(p, seg->ta, seg->tb);
+	cpVect delta = cpvsub(p, closest);
+	cpSegmentShapePointQueryInfo(seg, closest, delta, cpvlength(delta), info);
 }
 
 static void
@@ -484,6 +493,30 @@ static const cpShapeClass cpSegmentShapeClass = {
 	(cpShapePointQueryImpl)cpSegmentShapePointQuery,
 	(cpShapeSegmentQueryImpl)cpSegmentShapeSegmentQuery,
 };
+
+cpBool
+cpShapePointQueryWithin(const cpShape *shape, cpVect p, cpFloat maxDistance, cpPointQueryInfo *info)
+{
+	if(shape->klass == &cpCircleShapeClass){
+		const cpCircleShape *circle = (const cpCircleShape *)shape;
+		cpVect delta = cpvsub(p, circle->tc);
+		cpFloat d = cpvlength(delta);
+		cpFloat distance = d - circle->r;
+		if(!(distance < maxDistance)) return cpFalse;
+		cpCircleShapePointQueryInfo(circle, delta, d, info);
+		return cpTrue;
+	} else if(shape->klass == &cpSegmentShapeClass){
+		const cpSegmentShape *seg = (const cpSegmentShape *)shape;
+		cpVect closest = cpClosetPointOnSegment(p, seg->ta, seg->tb);
+		cpVect delta = cpvsub(p, closest);
+		cpFloat d = cpvlength(delta);
+		cpFloat distance = d - seg->r;
+		if(!(distance < maxDistance)) return cpFalse;
+		cpSegmentShapePointQueryInfo(seg, closest, delta, d, info);
+		return cpTrue;
+	}
+	return cpPolyShapePointQueryWithin(shape, p, maxDistance, info);
+}
 
 cpSegmentShape *
 cpSegmentShapeInit(cpSegmentShape *seg, cpBody *body, cpVect a, cpVect b, cpFloat r)
