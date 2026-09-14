@@ -72,6 +72,7 @@ cpPolyShapePointQuery(cpPolyShape *poly, cpVect p, cpPointQueryInfo *info){
 	
 	cpVect v0 = planes[count - 1].v0;
 	cpFloat minDist = INFINITY;
+	cpFloat minDistSq = INFINITY;
 	cpVect closestPoint = cpvzero;
 	cpVect closestNormal = cpvzero;
 	cpBool outside = cpFalse;
@@ -82,11 +83,17 @@ cpPolyShapePointQuery(cpPolyShape *poly, cpVect p, cpPointQueryInfo *info){
 		
 		cpVect closest = cpClosetPointOnSegment(p, v0, v1);
 		
-		cpFloat dist = cpvdist(p, closest);
-		if(dist < minDist){
-			minDist = dist;
-			closestPoint = closest;
-			closestNormal = planes[i].n;
+		cpFloat distSq = cpvdistsq(p, closest);
+		if(distSq < minDistSq){
+			minDistSq = distSq;
+			cpFloat dist = cpfsqrt(distSq);
+			// Distinct squared distances can round to the same square root.
+			// Keep the original strict comparison to preserve feature ties.
+			if(dist < minDist){
+				minDist = dist;
+				closestPoint = closest;
+				closestNormal = planes[i].n;
+			}
 		}
 		
 		v0 = v1;
