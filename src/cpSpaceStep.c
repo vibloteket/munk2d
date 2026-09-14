@@ -216,11 +216,19 @@ QueryRejectConstraint(cpBody *a, cpBody *b)
 	cpConstraint *ca = a->constraintList;
 	if(!ca) return cpFalse;
 	cpConstraint *cb = b->constraintList;
-	// A blocking joint belongs to both lists. Probe the other side briefly,
-	// but bound the extra work when both bodies have many constraints.
-	for(int i=0; i<4 && ca && cb; i++){
-		if(ConstraintBlocksBody(ca, b) || ConstraintBlocksBody(cb, a)) return cpTrue;
+	if(!cb) return cpFalse;
+	// Finish short A lists before probing B, avoiding duplicate work for
+	// the common low-degree case. A blocker must belong to both lists.
+	for(int i=0; i<4 && ca; i++){
+		if(!ca->collideBodies && (
+			(ca->a == a && ca->b == b) ||
+			(ca->a == b && ca->b == a)
+		)) return cpTrue;
 		ca = cpConstraintNext(ca, a);
+	}
+	if(!ca) return cpFalse;
+	for(int i=0; i<4 && cb; i++){
+		if(ConstraintBlocksBody(cb, a)) return cpTrue;
 		cb = cpConstraintNext(cb, b);
 	}
 	if(!cb) return cpFalse;
