@@ -36,6 +36,9 @@ static void run_case(int countA,int countB,int staticA){
   cpCollisionHandler *handler=cpSpaceAddGlobalCollisionHandler(space);
   handler->preSolveFunc=pre_solve;handler->userData=&calls;
   cpSpacePushFreshContactBuffer(space);
+  cpShape *same=cpSpaceAddShape(space,cpCircleShapeNew(a,1,cpv(0.5,0)));
+  probe(space,sa,same,&calls,0);
+  cpSpaceRemoveShape(space,same);cpShapeFree(same);
   probe(space,sa,sb,&calls,1);
 
   cpConstraint *fillers[128];int count=0;
@@ -75,8 +78,9 @@ static void run_case(int countA,int countB,int staticA){
   cpSpaceFree(space);
 }
 int main(void){
-  const int sizes[]={0,1,7,63};
-  for(int a=0;a<4;a++)for(int b=0;b<4;b++)for(int isStatic=0;isStatic<2;isStatic++)run_case(sizes[a],sizes[b],isStatic);
+  const int sizes[]={0,1,3,4,5,7,63};
+  const int count=(int)(sizeof(sizes)/sizeof(sizes[0]));
+  for(int a=0;a<count;a++)for(int b=0;b<count;b++)for(int isStatic=0;isStatic<2;isStatic++)run_case(sizes[a],sizes[b],isStatic);
   puts("Constraint filtering: both orientations, asymmetric degrees, multiple blockers and sleep/wake passed.");
   return 0;
 }

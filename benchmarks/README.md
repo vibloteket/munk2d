@@ -201,3 +201,36 @@ semantics should start a new environment or protocol series instead of silently
 continuing an incompatible graph. The current versioned format is documented by
 [`results-schema-v5.json`](results-schema-v5.json). Earlier schemas remain in the
 repository for historical 13- and 17-scenario records.
+
+## Constraint collision-filter scenario
+
+`tools/constraint-filter-scenario.c` is an optional POSIX scenario for asymmetric
+constraint degrees. A large dynamic circle contacts a ring of static circles.
+Pin joints connect the dynamic circle and/or the shared static wall body to
+separate shape-less bodies; none connects the two colliding bodies directly.
+All these joints have `collideBodies=false`, so they must not suppress the ring
+contacts. Default force limits, solver iterations and real contact solving remain
+in use. The scenario uses zero gravity and starts the joints at their rest lengths.
+
+```sh
+cc -O3 -DNDEBUG -Iinclude benchmarks/tools/constraint-filter-scenario.c \
+  build/src/libchipmunk.a -lm -o build/constraint-filter-scenario
+./build/constraint-filter-scenario stationary 1 1024 128 100
+./build/constraint-filter-scenario moving 1024 1 128 100
+./build/constraint-filter-scenario stationary 1024 1024 128 100
+```
+
+Arguments are mode, joint count on the dynamic circle, joint count on the static
+wall body, wall-circle count (a positive multiple of four), and timed steps.
+`stationary` exercises cached broad-phase pairs. `moving` uses position callbacks
+to move the dynamic circle and its connected bodies together between x offsets
++6 and -6, exercising leaf reinsertion; it is controlled motion, not a prediction
+of an unconstrained physical trajectory. Pair argument ordering may differ
+between those broad-phase paths.
+
+Four untimed steps initialize the scene. Only subsequent `cpSpaceStep` calls are
+timed, excluding construction and cleanup. Output is
+`mode,dynamic_joints,static_joints,walls,steps,total_seconds,pre_solve_calls,state_hash`.
+Compare callback counts and finite body-state hashes as well as timings. Include
+zero-degree, balanced-degree and probe-boundary controls; this scenario does not
+replace the normal MunkBench suite or change its versioned protocol.

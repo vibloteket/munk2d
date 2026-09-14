@@ -203,17 +203,35 @@ cpSpaceArbiterSetTrans(cpShape **shapes, cpSpace *space)
 }
 
 static inline cpBool
+ConstraintBlocksBody(cpConstraint *constraint, cpBody *other)
+{
+	// The traversed list already establishes one endpoint. QueryReject has
+	// also excluded pairs belonging to the same body.
+	return !constraint->collideBodies && (constraint->a == other || constraint->b == other);
+}
+
+static inline cpBool
 QueryRejectConstraint(cpBody *a, cpBody *b)
 {
-	CP_BODY_FOREACH_CONSTRAINT(a, constraint){
-		if(
-			!constraint->collideBodies && (
-				(constraint->a == a && constraint->b == b) ||
-				(constraint->a == b && constraint->b == a)
-			)
-		) return cpTrue;
+	cpConstraint *ca = a->constraintList;
+	if(!ca) return cpFalse;
+	cpConstraint *cb = b->constraintList;
+	// A blocking joint belongs to both lists. Probe the other side briefly,
+	// but bound the extra work when both bodies have many constraints.
+	for(int i=0; i<4 && ca && cb; i++){
+		if(ConstraintBlocksBody(ca, b) || ConstraintBlocksBody(cb, a)) return cpTrue;
+		ca = cpConstraintNext(ca, a);
+		cb = cpConstraintNext(cb, b);
 	}
-	
+	if(!cb) return cpFalse;
+	// Keep the original long-scan predicate: its a-side test can also serve
+	// the next_a/next_b selection, avoiding an extra test for every node.
+	for(; ca; ca = cpConstraintNext(ca, a)){
+		if(!ca->collideBodies && (
+			(ca->a == a && ca->b == b) ||
+			(ca->a == b && ca->b == a)
+		)) return cpTrue;
+	}
 	return cpFalse;
 }
 
