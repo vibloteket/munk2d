@@ -294,3 +294,30 @@ covers shape identity, distance, point and gradient. The timed loop also sums
 distances to consume the results. Check both hash and sum across builds.
 Construction, warm-up/validation and cleanup are excluded. No physics stepping
 runs here; query gains do not imply equivalent full-simulation gains.
+
+## Body-array lifecycle measurements
+
+`tools/body-array-lifecycle.c` isolates body-array operations without adding
+shapes or constraints. Arguments are mode, body count and independent repeats:
+
+```sh
+cc -O3 -DNDEBUG -Iinclude benchmarks/tools/body-array-lifecycle.c \
+  build/src/libchipmunk.a -lm -o build/body-array-lifecycle
+./build/body-array-lifecycle forward 10000 3
+./build/body-array-lifecycle reverse 10000 3
+./build/body-array-lifecycle first 10000 3
+./build/body-array-lifecycle random 10000 3
+./build/body-array-lifecycle sleep-group 10000 3
+./build/body-array-lifecycle wake-reverse 10000 3
+./build/body-array-lifecycle auto-sleep 10000 3
+```
+
+`forward`/`reverse` remove bodies in creation/reverse order; `first` always removes
+the current first active entry, and `random` uses a deterministic permutation.
+`sleep-group` times explicit grouped sleep. `wake-reverse` times waking independent
+sleeping components in reverse creation order. `auto-sleep` times one complete
+step that automatically sleeps all isolated bodies, after an untimed warm-up.
+Setup, state validation, freeing and cleanup are excluded. Output is
+`mode,bodies,repeats,total_seconds,iteration_checksum`; divide time by repeats
+for per-operation totals and verify matching checksums. This POSIX tool does not
+change MunkBench's versioned protocol or represent general frame-time gains.
