@@ -201,6 +201,14 @@ quality/performance tradeoffs require explicit approval before implementation.
 - Six alternating smoke/reference MunkBench pairs plus A/A: mostly near neutral. Initial reference SlowExplosion+1.25% and DampedRotarySpring+1.21% did not persist in a12-pair focused follow-up (+0.06% and-0.63%); ConstraintMix was+0.06% in follow-up. Small/code-layout-sensitive differences are not universal gains or costs.
 - All26 smoke/reference summaries are byte-exact with repeats. Regression oracle mirrors the old implementation and checks every result field across sizes, rotations, bevels, vertices/edges, tiny distances and non-finite classifications. Explicit rounded-root tie: first edge squared distance1+2^-52 and next edge1 both round to root1; keep the first feature. Release and strict ASan/LSan/UBSan7/7, full smoke, targeted single-precision test and C++ compilation pass.
 
+## Matching-last array deletion (2026-09-14)
+
+- Baseline `7811bdb`, after PR #50. `cpArrayDeleteObj` checks for a matching last entry before the linear search. This preserves exact array contents even with duplicates: the original algorithm would replace the first match with an equal last value, then clear the last slot. No layout/state/allocation changes and no different removal order as observable through the array.
+- Exhaustive reference comparison for all length0–5 arrays over two pointers/NULL and present/absent targets (1,456 cases), plus10,000 mixed operations, covers duplicates, empty arrays, cleared slots and growth. Release/strict ASan/LSan/UBSan9/9, full smoke and all lifecycle modes pass; all26 smoke/reference summaries remain byte-exact with repeats.
+- Local GCC15.2/i5-12400T/Release-LTO/CPU2; nine alternating lifecycle pairs plus A/A, sizes1,000/5,000/10,000. Public body APIs, no shapes/constraints, setup/cleanup excluded. At10,000: forward removal6.190->3.135ms, reverse removal12.226->0.0917ms, grouped sleep6.235->3.166ms, reverse component wake12.225->0.0823ms. These are ordered lifecycle-operation gains, not universal frame-time improvements.
+- Controls at10,000: always-first removal0.0979->0.0978ms, random removal6.262->6.282ms (paired median near zero), automatic-sleep step0.3159->0.3151ms. Smaller first/auto-sleep controls showed small costs up to roughly0.8%; no claim that every order improves.
+- Six alternating smoke/reference MunkBench pairs plus A/A: contact/integration scenes mostly within a few tenths of a percent. Initial isolated DampedRotarySpring smoke+1.63% and Ratchet reference+1.25% were not stable in a12-pair follow-up; follow-up DampedRotary reference+1.00% coincided with A/A+1.40%. ConstraintMix remained near neutral. Keep such tiny/layout-sensitive changes separate from the demonstrated elimination of long array scans.
+
 ## Current profile notes
 
 - `cpArbiterApplyImpulse` remains the largest contact-heavy hotspot (roughly 36–59% self time).
