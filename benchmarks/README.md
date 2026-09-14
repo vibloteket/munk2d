@@ -244,3 +244,26 @@ timed, excluding construction and cleanup. Output is
 Compare callback counts and finite body-state hashes as well as timings. Include
 zero-degree, balanced-degree and probe-boundary controls; this scenario does not
 replace the normal MunkBench suite or change its versioned protocol.
+
+## Polygon point-query measurements
+
+`tools/poly-point-query.c` is an optional POSIX query benchmark. `shape`, `inside`
+and `outside` query one beveled regular polygon with mixed, interior or exterior
+points. `space` calls `cpSpacePointQueryNearest` over 64 static polygons with an
+unbounded initial distance. All modes use the same deterministic set of 1,024
+points for validation/warm-up and repeat it during timing.
+
+```sh
+cc -O3 -DNDEBUG -Iinclude benchmarks/tools/poly-point-query.c \
+  build/src/libchipmunk.a -lm -o build/poly-point-query
+./build/poly-point-query shape 4 1000000
+./build/poly-point-query inside 16 1000000
+./build/poly-point-query space 16 20000
+```
+
+Arguments are mode, vertex count (3–64), and timed query count. Output is
+`mode,vertices,queries,total_seconds,result_hash,distance_sum`. The untimed hash
+covers shape identity, distance, point and gradient. The timed loop also sums
+distances to consume the results. Check both hash and sum across builds.
+Construction, warm-up/validation and cleanup are excluded. No physics stepping
+runs here; query gains do not imply equivalent full-simulation gains.
