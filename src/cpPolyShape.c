@@ -64,8 +64,8 @@ cpPolyShapeCacheData(cpPolyShape *poly, cpTransform transform)
 	return (poly->shape.bb = cpBBNew(l - radius, b - radius, r + radius, t + radius));
 }
 
-static void
-cpPolyShapePointQuery(cpPolyShape *poly, cpVect p, cpPointQueryInfo *info){
+static inline cpBool
+PolyPointQuery(const cpPolyShape *poly, cpVect p, cpFloat maxDistance, cpBool limited, cpPointQueryInfo *info){
 	int count = poly->count;
 	struct cpSplittingPlane *planes = poly->planes;
 	cpFloat r = poly->r;
@@ -100,6 +100,8 @@ cpPolyShapePointQuery(cpPolyShape *poly, cpVect p, cpPointQueryInfo *info){
 	}
 	
 	cpFloat dist = (outside ? minDist : -minDist);
+	cpFloat distance = dist - r;
+	if(limited && !(distance < maxDistance)) return cpFalse;
 	cpVect g = cpvmult(cpvsub(p, closestPoint), 1.0f/dist);
 	
 	info->shape = (cpShape *)poly;
@@ -108,6 +110,13 @@ cpPolyShapePointQuery(cpPolyShape *poly, cpVect p, cpPointQueryInfo *info){
 	
 	// Use the normal of the closest segment if the distance is small.
 	info->gradient = (minDist > MAGIC_EPSILON ? g : closestNormal);
+	return cpTrue;
+}
+
+static void
+cpPolyShapePointQuery(cpPolyShape *poly, cpVect p, cpPointQueryInfo *info)
+{
+	PolyPointQuery(poly, p, 0.0f, cpFalse, info);
 }
 
 static void
@@ -194,6 +203,13 @@ static const cpShapeClass polyClass = {
 	(cpShapePointQueryImpl)cpPolyShapePointQuery,
 	(cpShapeSegmentQueryImpl)cpPolyShapeSegmentQuery,
 };
+
+cpBool
+cpPolyShapePointQueryWithin(const cpShape *shape, cpVect p, cpFloat maxDistance, cpPointQueryInfo *info)
+{
+	if(shape->klass != &polyClass) return cpShapePointQuery(shape, p, info) < maxDistance;
+	return PolyPointQuery((const cpPolyShape *)shape, p, maxDistance, cpTrue, info);
+}
 
 cpPolyShape *
 cpPolyShapeInit(cpPolyShape *poly, cpBody *body, int count, const cpVect *verts, cpTransform transform, cpFloat radius)

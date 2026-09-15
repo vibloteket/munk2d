@@ -65,9 +65,7 @@ NearestPointQueryNearest(struct PointQueryContext *context, cpShape *shape, cpCo
 		!cpShapeFilterReject(shape->filter, context->filter)
 	){
 		cpPointQueryInfo info;
-		cpShapePointQuery(shape, context->point, &info);
-		
-		if(info.distance < out->distance) (*out) = info;
+		if(cpShapePointQueryWithin(shape, context->point, out->distance, &info)) (*out) = info;
 	}
 	
 	return id;

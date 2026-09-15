@@ -115,6 +115,10 @@ void cpArbiterApplyImpulse(cpArbiter *arb);
 //MARK: Shapes/Collisions
 
 cpShape *cpShapeInit(cpShape *shape, const cpShapeClass *klass, cpBody *body, struct cpShapeMassInfo massInfo);
+// Tests the same signed distance as the full query against a strict cutoff.
+// On true, info is complete. On false, callers must not use info.
+cpBool cpShapePointQueryWithin(const cpShape *shape, cpVect p, cpFloat maxDistance, cpPointQueryInfo *info);
+cpBool cpPolyShapePointQueryWithin(const cpShape *shape, cpVect p, cpFloat maxDistance, cpPointQueryInfo *info);
 
 static inline cpBool
 cpShapeActive(cpShape *shape)
