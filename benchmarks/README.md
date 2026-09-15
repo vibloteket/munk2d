@@ -349,3 +349,40 @@ accumulates distance. This excludes moving-body/index-update work, Python/FFI
 costs, and application frame times. Test small and large **finite** radii as well
 as infinity, and retain polygon, mixed, all-hit and direct-shape controls. See
 `OPTIMIZATION-LOG.md` for measured gains and workload-specific regressions.
+
+### Supplementary segment-query benchmark
+
+`tools/segment-query.c` measures cached ray/sweep queries, not simulation steps:
+
+```sh
+cc -O3 -DNDEBUG -Iinclude benchmarks/tools/segment-query.c build/src/libchipmunk.a -lm -o build/segment-query
+taskset -c 2 build/segment-query first mixed 1024 short 0 50000
+taskset -c 2 build/segment-query all mixed 1024 long 0.75 50000
+taskset -c 2 build/segment-query first poly16 8192 fan 0 10000
+```
+
+Arguments: `first|all`, `circle|segment|box|poly16|mixed`, shape count,
+`short|long|horizontal|vertical|fan|miss`, query radius, query count.
+Output: `api,kind,shapes,pattern,radius,queries,seconds,warm_hash,hits,alpha_sum`.
+Use identical build flags, CPU pinning, alternating AB/BA pairs and A/A controls;
+require matching hashes/hit counts/sums. `first` and `all` intentionally return
+different result sets, so do not compare their hashes with each other.
+
+The seeded 256-ray sequence visits a grid with spacing4; short rays have length8,
+long/axis rays cross the scene, fan rays radiate from an interior gap, and miss
+rays lie entirely outside the scene. Half the shapes are in each spatial index;
+the dynamic shapes share one body. This is not an independently moving-actor or
+Python/FFI benchmark. Setup, warm-up, hashing and cleanup are untimed.
+
+Optional compile-time flags apply only to this supplementary tool:
+- `-DCOUNT_QUERIES`: an untimed pass records initial point-query calls, outside
+  starts, segment calls/hits, non-improving first-hit results, and an ordered
+  candidate trace split into two32-bit hash words. It verifies equality with the
+  normal warm-up results. Do not use the instrumented executable for timings.
+- `-DMOVED_SNAPSHOT`: translate/reindex the dynamic body twice with different
+  velocities before warm-up. This exercises a changed/fattened tree snapshot;
+  motion/reindex costs and cold-cache behavior are still not timed.
+
+Retain miss/axis controls, small and large scenes, and positive radii. The main
+MunkBench versioned protocol is unchanged. See the optimization log for gains,
+regressions and validation evidence.
