@@ -117,30 +117,39 @@ static inline cpFloat cpBBSegmentQuery(cpBB bb, cpVect a, cpVect b)
 {
 	cpVect delta = cpvsub(b, a);
 	cpFloat tmin = -INFINITY, tmax = INFINITY;
-	
 	if(delta.x == 0.0f){
 		if(a.x < bb.l || bb.r < a.x) return INFINITY;
+		if(delta.y == 0.0f){
+			if(a.y < bb.b || bb.t < a.y) return INFINITY;
+		} else {
+			cpFloat t1 = (bb.b - a.y)/delta.y;
+			cpFloat t2 = (bb.t - a.y)/delta.y;
+			tmin = cpfmax(tmin, cpfmin(t1, t2));
+			tmax = cpfmin(tmax, cpfmax(t1, t2));
+		}
 	} else {
+		cpFloat y_min = 0.0f, y_max = 0.0f;
+		if(delta.y == 0.0f){
+			if(a.y < bb.b || bb.t < a.y) return INFINITY;
+		} else {
+			cpFloat t1 = (bb.b - a.y)/delta.y;
+			cpFloat t2 = (bb.t - a.y)/delta.y;
+			y_min = cpfmin(t1, t2);
+			y_max = cpfmax(t1, t2);
+			// No x interval can make this y interval intersect the segment.
+			if(y_min > 1.0f || y_max < 0.0f) return INFINITY;
+		}
 		cpFloat t1 = (bb.l - a.x)/delta.x;
 		cpFloat t2 = (bb.r - a.x)/delta.x;
 		tmin = cpfmax(tmin, cpfmin(t1, t2));
 		tmax = cpfmin(tmax, cpfmax(t1, t2));
+		if(delta.y != 0.0f){
+			// Keep x-then-y combination order, including NaN and signed-zero behavior.
+			tmin = cpfmax(tmin, y_min);
+			tmax = cpfmin(tmax, y_max);
+		}
 	}
-	
-	if(delta.y == 0.0f){
-		if(a.y < bb.b || bb.t < a.y) return INFINITY;
-	} else {
-		cpFloat t1 = (bb.b - a.y)/delta.y;
-		cpFloat t2 = (bb.t - a.y)/delta.y;
-		tmin = cpfmax(tmin, cpfmin(t1, t2));
-		tmax = cpfmin(tmax, cpfmax(t1, t2));
-	}
-	
-	if(tmin <= tmax && 0.0f <= tmax && tmin <= 1.0f){
-		return cpfmax(tmin, 0.0f);
-	} else {
-		return INFINITY;
-	}
+	return (tmin <= tmax && 0.0f <= tmax && tmin <= 1.0f ? cpfmax(tmin, 0.0f) : INFINITY);
 }
 
 /// Return true if the bounding box intersects the line segment with ends @c a and @c b.
