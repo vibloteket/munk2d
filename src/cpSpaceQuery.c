@@ -106,6 +106,47 @@ struct SegmentQueryContext {
 	cpSpaceSegmentQueryFunc func;
 };
 
+struct RadiusSegmentQueryContext {
+	struct SegmentQueryContext *query;
+	cpSpatialIndexSegmentQueryFunc func;
+	void *data;
+};
+
+static cpCollisionID
+RadiusSegmentQuery(void *obj, void *shape, cpCollisionID id, void *unused)
+{
+	struct RadiusSegmentQueryContext *context = (struct RadiusSegmentQueryContext *)obj;
+	(void)unused;
+	context->func(context->query, shape, context->data);
+	return id;
+}
+
+static void
+RadiusSegmentQueryEach(void *shape, void *data)
+{
+	RadiusSegmentQuery(data, shape, 0, NULL);
+}
+
+static void
+SegmentQueryRadius(cpSpatialIndex *index, struct SegmentQueryContext *query, cpFloat t_exit, cpSpatialIndexSegmentQueryFunc func, void *data)
+{
+	// Keep BBTree's near-first traversal and clipping, using radius-expanded nodes.
+	if(cpBBTreeSegmentQueryRadius(index, query, query->start, query->end, query->radius, t_exit, func, data)) return;
+	// Other indexes only support centreline segment queries. Use the full swept
+	// bounds, then let cpShapeSegmentQuery test the geometry.
+	cpVect a = query->start, b = query->end;
+	cpFloat r = query->radius;
+	cpBB bb = cpBBNew(cpfmin(a.x, b.x) - r, cpfmin(a.y, b.y) - r,
+		cpfmax(a.x, b.x) + r, cpfmax(a.y, b.y) + r);
+	struct RadiusSegmentQueryContext context = {query, func, data};
+	if(isfinite(bb.l) && isfinite(bb.b) && isfinite(bb.r) && isfinite(bb.t) && !cpSpaceHashQueryUseEach(index, bb)){
+		cpSpatialIndexQuery(index, &context, bb, RadiusSegmentQuery, NULL);
+	} else {
+		// Avoid non-finite/out-of-range cells and cap large hash sweeps at O(n).
+		cpSpatialIndexEach(index, RadiusSegmentQueryEach, &context);
+	}
+}
+
 static cpFloat
 SegmentQuery(struct SegmentQueryContext *context, cpShape *shape, void *data)
 {
@@ -121,6 +162,14 @@ SegmentQuery(struct SegmentQueryContext *context, cpShape *shape, void *data)
 	return 1.0f;
 }
 
+static cpFloat
+RadiusSegmentQueryAll(struct SegmentQueryContext *context, cpShape *shape, void *data)
+{
+	SegmentQuery(context, shape, data);
+	// Preserve endpoint hits: all-hit queries must not clip at alpha == 1.
+	return INFINITY;
+}
+
 void
 cpSpaceSegmentQuery(cpSpace *space, cpVect start, cpVect end, cpFloat radius, cpShapeFilter filter, cpSpaceSegmentQueryFunc func, void *data)
 {
@@ -132,8 +181,13 @@ cpSpaceSegmentQuery(cpSpace *space, cpVect start, cpVect end, cpFloat radius, cp
 	};
 	
 	cpSpaceLock(space); {
-    cpSpatialIndexSegmentQuery(space->staticShapes, &context, start, end, 1.0f, (cpSpatialIndexSegmentQueryFunc)SegmentQuery, data);
-    cpSpatialIndexSegmentQuery(space->dynamicShapes, &context, start, end, 1.0f, (cpSpatialIndexSegmentQueryFunc)SegmentQuery, data);
+		if(radius > 0.0f){
+			SegmentQueryRadius(space->staticShapes, &context, INFINITY, (cpSpatialIndexSegmentQueryFunc)RadiusSegmentQueryAll, data);
+			SegmentQueryRadius(space->dynamicShapes, &context, INFINITY, (cpSpatialIndexSegmentQueryFunc)RadiusSegmentQueryAll, data);
+		} else {
+			cpSpatialIndexSegmentQuery(space->staticShapes, &context, start, end, 1.0f, (cpSpatialIndexSegmentQueryFunc)SegmentQuery, data);
+			cpSpatialIndexSegmentQuery(space->dynamicShapes, &context, start, end, 1.0f, (cpSpatialIndexSegmentQueryFunc)SegmentQuery, data);
+		}
 	} cpSpaceUnlock(space, cpTrue);
 }
 
@@ -170,8 +224,13 @@ cpSpaceSegmentQueryFirst(cpSpace *space, cpVect start, cpVect end, cpFloat radiu
 		NULL
 	};
 	
-	cpSpatialIndexSegmentQuery(space->staticShapes, &context, start, end, 1.0f, (cpSpatialIndexSegmentQueryFunc)SegmentQueryFirst, out);
-	cpSpatialIndexSegmentQuery(space->dynamicShapes, &context, start, end, out->alpha, (cpSpatialIndexSegmentQueryFunc)SegmentQueryFirst, out);
+	if(radius > 0.0f){
+		SegmentQueryRadius(space->staticShapes, &context, 1.0f, (cpSpatialIndexSegmentQueryFunc)SegmentQueryFirst, out);
+		SegmentQueryRadius(space->dynamicShapes, &context, out->alpha, (cpSpatialIndexSegmentQueryFunc)SegmentQueryFirst, out);
+	} else {
+		cpSpatialIndexSegmentQuery(space->staticShapes, &context, start, end, 1.0f, (cpSpatialIndexSegmentQueryFunc)SegmentQueryFirst, out);
+		cpSpatialIndexSegmentQuery(space->dynamicShapes, &context, start, end, out->alpha, (cpSpatialIndexSegmentQueryFunc)SegmentQueryFirst, out);
+	}
 	
 	return (cpShape *)out->shape;
 }

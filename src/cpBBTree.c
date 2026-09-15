@@ -454,7 +454,7 @@ SubtreeQuery(Node *subtree, void *obj, cpBB bb, cpSpatialIndexQueryFunc func, vo
 
 
 static cpFloat
-SubtreeSegmentQuery(Node *subtree, void *obj, cpVect a, cpVect b, cpFloat t_exit, cpSpatialIndexSegmentQueryFunc func, void *data)
+SubtreeSegmentQuery(Node *subtree, void *obj, cpVect a, cpVect b, cpFloat radius, cpFloat t_exit, cpSpatialIndexSegmentQueryFunc func, void *data)
 {
 	CP_STACK_INIT(stack);
 	
@@ -465,8 +465,13 @@ SubtreeSegmentQuery(Node *subtree, void *obj, cpVect a, cpVect b, cpFloat t_exit
 		if(NodeIsLeaf(node)){
 			t_exit = cpfmin(t_exit, func(obj, node->obj, data));
 		} else {
-			cpFloat t_a = cpBBSegmentQuery(node->A->bb, a, b);
-			cpFloat t_b = cpBBSegmentQuery(node->B->bb, a, b);
+			cpBB bb_a = node->A->bb, bb_b = node->B->bb;
+			if(radius > 0.0f){
+				bb_a = cpBBNew(bb_a.l - radius, bb_a.b - radius, bb_a.r + radius, bb_a.t + radius);
+				bb_b = cpBBNew(bb_b.l - radius, bb_b.b - radius, bb_b.r + radius, bb_b.t + radius);
+			}
+			cpFloat t_a = cpBBSegmentQuery(bb_a, a, b);
+			cpFloat t_b = cpBBSegmentQuery(bb_b, a, b);
 			
 			// Push the farther child first so the nearer child is processed first (LIFO).
 			// This maximizes early pruning via t_exit.
@@ -834,7 +839,16 @@ static void
 cpBBTreeSegmentQuery(cpBBTree *tree, void *obj, cpVect a, cpVect b, cpFloat t_exit, cpSpatialIndexSegmentQueryFunc func, void *data)
 {
 	Node *root = tree->root;
-	if(root) SubtreeSegmentQuery(root, obj, a, b, t_exit, func, data);
+	if(root) SubtreeSegmentQuery(root, obj, a, b, 0.0f, t_exit, func, data);
+}
+
+cpBool
+cpBBTreeSegmentQueryRadius(cpSpatialIndex *index, void *obj, cpVect a, cpVect b, cpFloat radius, cpFloat t_exit, cpSpatialIndexSegmentQueryFunc func, void *data)
+{
+	cpBBTree *tree = GetTree(index);
+	if(!tree) return cpFalse;
+	if(tree->root) SubtreeSegmentQuery(tree->root, obj, a, b, radius, t_exit, func, data);
+	return cpTrue;
 }
 
 static void
