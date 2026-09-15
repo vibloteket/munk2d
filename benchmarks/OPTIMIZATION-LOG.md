@@ -229,6 +229,17 @@ quality/performance tradeoffs require explicit approval before implementation.
 - Mixed nearest radius4 now measured +0.68% (A/A -0.61%), versus the initial +1.96%. The 16-gon radius16 case changed from +1.75% to -1.04%. Not every case wins: 16-gon/infinity +0.73% remains; unchanged all-hit controls ranged -2.75..+2.21%, direct-shape controls -0.66..+0.59%. Treat small/layout-sensitive deltas cautiously.
 - Attribute-free source: Release and strict ASan/UBSan 10/10 CTests, C++11 query regression, both float query targets, and exact repeated summaries for all 26 smoke/reference scenarios. The known baseline float basic-test failures described above remain unrelated. The supplementary benchmark and main MunkBench protocol are unchanged.
 
+## Positive-radius segment queries: correctness fix (2026-09-15)
+
+- Separate from the segment-query performance prototype and nearest-point PR #54. Reproduced on `280c011` and independently confirmed by the user in Pymunk: circle at (0,0), radius1; sweep (-3,1.5) to (3,1.5), query radius0.75. Direct shape query hits, but both space queries can miss after adding an unrelated circle at (100,100). Spatial hash also misses. Cause: centreline-only candidate selection.
+- BBTree now expands queried node bounds by the positive query radius, preserving its near-first traversal and first-hit clipping. The zero-radius entry passes zero without expanding bounds. No public API, spatial-index vtable, or persistent-layout changes.
+- Other indexes use the swept AABB and the original precise shape query. Spatial hash falls back to enumerating objects when cell coordinates are unsafe or the query would visit more cells than indexed objects; this also avoids pathological large empty hash rectangles. Non-finite bounds use object enumeration.
+- Positive-radius all-hit queries retain endpoint hits by traversing with an infinite cutoff; first-hit queries retain their existing strict alpha<1 rule and static-before-dynamic priority. Callback order remains unspecified. Shape intersection math, filters, sensors and lock/post-step behavior are unchanged.
+- Rejected an AABB-only implementation for BBTree: in a pilot, long mixed positive-radius first-hit queries took about21.5 microseconds versus0.67 microseconds with expanded-node traversal. Both produced the same result hash in that fixture. Comparisons against the broken old positive-radius path are not valid speedup claims because its results differ.
+- Regression tests fail before the fix and pass after it. Tests compare all returned records and minimum hit fraction against direct shape queries across BBTree/hash, static/dynamic, circles/segments/rounded boxes/16-gons, reversed/diagonal/zero-length sweeps, tangencies, endpoints, starts inside, filters/sensors, ties, duplicate suppression, post-step delivery, very large and infinite radii.
+- Release and strict ASan/UBSan:10/10 CTests; float radius regression and C++11 regression pass. All26 smoke/reference summaries exact twice each. Sixty zero-radius ordered candidate traces and returned-result hashes match baseline.
+- Zero-radius controls (seven AB/BA+A/A pairs, GCC15.2 Release/LTO, CPU2, mixed1024): most measured deltas -0.25..-5.52%; very cheap outside-scene misses +0.78% first /+3.30% all (sub-nanosecond costs). No separate performance optimization or whole-frame gain is claimed.
+
 ## Current profile notes
 
 - `cpArbiterApplyImpulse` remains the largest contact-heavy hotspot (roughly 36–59% self time).

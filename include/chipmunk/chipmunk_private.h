@@ -88,6 +88,10 @@ void cpBodyRemoveConstraint(cpBody *body, cpConstraint *constraint);
 //MARK: Spatial Index Functions
 
 cpSpatialIndex *cpSpatialIndexInit(cpSpatialIndex *index, cpSpatialIndexClass *klass, cpSpatialIndexBBFunc bbfunc, cpSpatialIndex *staticIndex);
+// Returns false for other index implementations so callers can use a BB-query fallback.
+cpBool cpBBTreeSegmentQueryRadius(cpSpatialIndex *index, void *obj, cpVect a, cpVect b, cpFloat radius, cpFloat t_exit, cpSpatialIndexSegmentQueryFunc func, void *data);
+// A radius-query fallback can avoid unsafe or excessive hash-cell enumeration.
+cpBool cpSpaceHashQueryUseEach(cpSpatialIndex *index, cpBB bb);
 
 
 //MARK: Arbiters
