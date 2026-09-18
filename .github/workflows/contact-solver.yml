@@ -1,0 +1,51 @@
+name: Contact solver portability
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  runtime-guard-and-disabled-build:
+    # Keep a userspace baseline that itself runs on the emulated pre-AVX CPUs.
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure portable baseline with optional AVX2 and LTO
+        run: >
+          cmake -S . -B build-guard
+          -DCMAKE_BUILD_TYPE=Release -DBUILD_DEMOS=OFF
+          -DBUILD_TESTING=ON -DBUILD_BENCHMARKS=ON
+          -DMUNK2D_ENABLE_AVX2_CONTACT_SOLVER=ON -DMUNK2D_ENABLE_LTO=ON
+          -DCMAKE_C_FLAGS="-march=x86-64 -mtune=generic"
+      - run: cmake --build build-guard --parallel 2
+      - run: ctest --test-dir build-guard --output-on-failure
+      - name: Install CPU emulator for negative ISA tests
+        run: sudo apt-get update && sudo apt-get install -y qemu-user
+      - name: Test CPUs without AVX and without AVX2
+        run: |
+          set -euo pipefail
+          qemu-x86_64 -cpu Nehalem ./build-guard/tests/chipmunk_contact_solver_tests
+          qemu-x86_64 -cpu SandyBridge ./build-guard/tests/chipmunk_contact_solver_tests
+      - name: Configure backend-disabled build
+        run: >
+          cmake -S . -B build-disabled
+          -DCMAKE_BUILD_TYPE=Release -DBUILD_DEMOS=OFF
+          -DBUILD_TESTING=ON -DBUILD_BENCHMARKS=ON
+          -DMUNK2D_ENABLE_AVX2_CONTACT_SOLVER=OFF
+      - run: cmake --build build-disabled --parallel 2
+      - run: ctest --test-dir build-disabled --output-on-failure
+      - name: Disabled CLI rejects an AVX2 request
+        shell: bash
+        run: |
+          set +e
+          ./build-disabled/benchmarks/munkbench --contact-solver avx2 > rejected.txt 2>&1
+          code=$?
+          set -e
+          test "$code" -eq 2
+          grep -q 'unavailable' rejected.txt

@@ -2,6 +2,19 @@
 #include <limits.h>
 #include <string.h>
 
+cpArray *
+cpSpaceBufferArrayNew(void)
+{
+ cpSpaceBufferStorage *storage = (cpSpaceBufferStorage *)cpcalloc(1, sizeof(*storage));
+ cpAssertHard(storage != NULL, "Cannot allocate space buffer storage.");
+ storage->array.num = 0;
+ storage->array.max = 4;
+ storage->solver = NULL;
+ storage->array.arr = (void **)cpcalloc(4, sizeof(void *));
+ cpAssertHard(storage->array.arr != NULL, "Cannot allocate space buffer array.");
+ return &storage->array;
+}
+
 /* Checked, naturally aligned regions within an allocation owned by this module. */
 static cpBool
 addRegion(size_t *bytes, size_t count, size_t itemSize)
@@ -80,12 +93,12 @@ cpContactSolverDestroy(cpSpace *space)
 {
  cpContactSolverContext *s = cpContactSolverGet(space);
  if(!s) return;
+ ((cpSpaceBufferStorage *)space->allocatedBuffers)->solver = NULL;
  /* A previous step may have been followed by removal/freeing of any body.
   * Destruction must never commit or dereference old scratch references. */
  if(s->graphMemory) cpfree(s->graphMemory);
  if(s->solverMemory) cpfree(s->solverMemory);
  cpfree(s);
- space->allocatedBuffers->arr[0] = NULL;
 }
 
 cpContactSolverType
@@ -107,7 +120,7 @@ cpSpaceSetContactSolver(cpSpace *space, cpContactSolverType solver)
  cpContactSolverContext *s = (cpContactSolverContext *)cpcalloc(1, sizeof(*s));
  if(!s) return cpFalse;
  s->kernel = cpContactSolverKernelAvx2;
- space->allocatedBuffers->arr[0] = s;
+ ((cpSpaceBufferStorage *)space->allocatedBuffers)->solver = s;
  return cpTrue;
 #else
  return cpFalse;

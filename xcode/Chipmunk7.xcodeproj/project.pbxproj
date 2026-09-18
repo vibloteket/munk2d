@@ -72,6 +72,10 @@
 		D34963D70B56CBBF00CAD239 /* cpShape.c in Sources */ = {isa = PBXBuildFile; fileRef = D37E22FD0AAA63B800BB4C50 /* cpShape.c */; };
 		D34963D80B56CBBF00CAD239 /* cpCollision.c in Sources */ = {isa = PBXBuildFile; fileRef = D37E231F0AAA728A00BB4C50 /* cpCollision.c */; };
 		D34963D90B56CBBF00CAD239 /* cpSpace.c in Sources */ = {isa = PBXBuildFile; fileRef = D3E5F2CF0AAA5589004E361B /* cpSpace.c */; };
+		AD11F6888E9AD87C3D3F6EF0 /* cpContactSolver.c in Sources */ = {isa = PBXBuildFile; fileRef = 0A288510F013F1EA2B3A11B7 /* cpContactSolver.c */; };
+		1E99D8C872E825C294F3F53C /* cpContactSolverCpu.c in Sources */ = {isa = PBXBuildFile; fileRef = 662EE6166284A663E5106451 /* cpContactSolverCpu.c */; };
+		6308DF33070C4F6CBFFC033F /* cpContactSolverScalar.c in Sources */ = {isa = PBXBuildFile; fileRef = EAB0C2C16B304DEB0EDF3A90 /* cpContactSolverScalar.c */; };
+		4C6F95454F18FFD5C26D7E72 /* cpContactSolverAvx2.c in Sources */ = {isa = PBXBuildFile; fileRef = A3222C8CAADCD7B78D3DF8A0 /* cpContactSolverAvx2.c */; };
 		D34E9E6712558100002C0FE5 /* cpSpaceQuery.c in Sources */ = {isa = PBXBuildFile; fileRef = D34E9E6412558081002C0FE5 /* cpSpaceQuery.c */; };
 		D34E9E681255810F002C0FE5 /* cpSpaceQuery.c in Sources */ = {isa = PBXBuildFile; fileRef = D34E9E6412558081002C0FE5 /* cpSpaceQuery.c */; };
 		D34E9E97125581DD002C0FE5 /* cpSpaceComponent.c in Sources */ = {isa = PBXBuildFile; fileRef = D34E9E96125581DD002C0FE5 /* cpSpaceComponent.c */; };
@@ -143,6 +147,10 @@
 		D3C3790411063C57003EF1D9 /* cpShape.c in Sources */ = {isa = PBXBuildFile; fileRef = D37E22FD0AAA63B800BB4C50 /* cpShape.c */; };
 		D3C3790511063C57003EF1D9 /* cpCollision.c in Sources */ = {isa = PBXBuildFile; fileRef = D37E231F0AAA728A00BB4C50 /* cpCollision.c */; };
 		D3C3790611063C57003EF1D9 /* cpSpace.c in Sources */ = {isa = PBXBuildFile; fileRef = D3E5F2CF0AAA5589004E361B /* cpSpace.c */; };
+		2641386BABCF1F05A8434F4D /* cpContactSolver.c in Sources */ = {isa = PBXBuildFile; fileRef = 0A288510F013F1EA2B3A11B7 /* cpContactSolver.c */; };
+		6CA7C2763534B0E0B826D9BF /* cpContactSolverCpu.c in Sources */ = {isa = PBXBuildFile; fileRef = 662EE6166284A663E5106451 /* cpContactSolverCpu.c */; };
+		061BA448262012D51541D0F5 /* cpContactSolverScalar.c in Sources */ = {isa = PBXBuildFile; fileRef = EAB0C2C16B304DEB0EDF3A90 /* cpContactSolverScalar.c */; };
+		5C67CFFBEDEFE0E38A562AE4 /* cpContactSolverAvx2.c in Sources */ = {isa = PBXBuildFile; fileRef = A3222C8CAADCD7B78D3DF8A0 /* cpContactSolverAvx2.c */; };
 		D3C3790711063C57003EF1D9 /* cpDampedRotarySpring.c in Sources */ = {isa = PBXBuildFile; fileRef = D36B192D0EA1364E0028A362 /* cpDampedRotarySpring.c */; };
 		D3C3790811063C57003EF1D9 /* cpRotaryLimitJoint.c in Sources */ = {isa = PBXBuildFile; fileRef = D37BB76C0EAADA6300C70958 /* cpRotaryLimitJoint.c */; };
 		D3C3790911063C57003EF1D9 /* cpGearJoint.c in Sources */ = {isa = PBXBuildFile; fileRef = D37BB8B10EAB01E400C70958 /* cpGearJoint.c */; };
@@ -203,6 +211,10 @@
 		FF80DCEC1CA9C68500C44647 /* cpShape.c in Sources */ = {isa = PBXBuildFile; fileRef = D37E22FD0AAA63B800BB4C50 /* cpShape.c */; };
 		FF80DCED1CA9C68500C44647 /* cpCollision.c in Sources */ = {isa = PBXBuildFile; fileRef = D37E231F0AAA728A00BB4C50 /* cpCollision.c */; };
 		FF80DCEE1CA9C68500C44647 /* cpSpace.c in Sources */ = {isa = PBXBuildFile; fileRef = D3E5F2CF0AAA5589004E361B /* cpSpace.c */; };
+		169130BFB00E034A940E1952 /* cpContactSolver.c in Sources */ = {isa = PBXBuildFile; fileRef = 0A288510F013F1EA2B3A11B7 /* cpContactSolver.c */; };
+		A72A0AAD2EB5B0DB3B91E27C /* cpContactSolverCpu.c in Sources */ = {isa = PBXBuildFile; fileRef = 662EE6166284A663E5106451 /* cpContactSolverCpu.c */; };
+		437A21B8A7B52EF311EEDCD5 /* cpContactSolverScalar.c in Sources */ = {isa = PBXBuildFile; fileRef = EAB0C2C16B304DEB0EDF3A90 /* cpContactSolverScalar.c */; };
+		73F605DF198E9B64F267C55F /* cpContactSolverAvx2.c in Sources */ = {isa = PBXBuildFile; fileRef = A3222C8CAADCD7B78D3DF8A0 /* cpContactSolverAvx2.c */; };
 		FF80DCEF1CA9C68500C44647 /* cpDampedRotarySpring.c in Sources */ = {isa = PBXBuildFile; fileRef = D36B192D0EA1364E0028A362 /* cpDampedRotarySpring.c */; };
 		FF80DCF01CA9C68500C44647 /* cpRotaryLimitJoint.c in Sources */ = {isa = PBXBuildFile; fileRef = D37BB76C0EAADA6300C70958 /* cpRotaryLimitJoint.c */; };
 		FF80DCF11CA9C68500C44647 /* cpSpaceDebug.c in Sources */ = {isa = PBXBuildFile; fileRef = D3A96F7A17E9F86900658436 /* cpSpaceDebug.c */; };
@@ -433,6 +445,10 @@
 		D3E5F0DE0AAA2273004E361B /* cpBody.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = cpBody.c; path = ../src/cpBody.c; sourceTree = "<group>"; };
 		D3E5F2CE0AAA5589004E361B /* cpSpace.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = cpSpace.h; path = ../include/chipmunk/cpSpace.h; sourceTree = "<group>"; };
 		D3E5F2CF0AAA5589004E361B /* cpSpace.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = cpSpace.c; path = ../src/cpSpace.c; sourceTree = "<group>"; };
+		0A288510F013F1EA2B3A11B7 /* cpContactSolver.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = ../src/cpContactSolver.c; sourceTree = "<group>"; };
+		662EE6166284A663E5106451 /* cpContactSolverCpu.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = ../src/cpContactSolverCpu.c; sourceTree = "<group>"; };
+		EAB0C2C16B304DEB0EDF3A90 /* cpContactSolverScalar.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = ../src/cpContactSolverScalar.c; sourceTree = "<group>"; };
+		A3222C8CAADCD7B78D3DF8A0 /* cpContactSolverAvx2.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = ../src/cpContactSolverAvx2.c; sourceTree = "<group>"; };
 		D3E5F2D90AAA5622004E361B /* cpBB.h */ = {isa = PBXFileReference; fileEncoding = 30; lastKnownFileType = sourcecode.c.h; name = cpBB.h; path = ../include/chipmunk/cpBB.h; sourceTree = "<group>"; };
 		D3E5F2DD0AAA562B004E361B /* cpArray.c */ = {isa = PBXFileReference; fileEncoding = 30; lastKnownFileType = sourcecode.c.c; path = cpArray.c; sourceTree = "<group>"; };
 		D3E5F2DF0AAA562B004E361B /* cpSpaceHash.c */ = {isa = PBXFileReference; fileEncoding = 30; lastKnownFileType = sourcecode.c.c; path = cpSpaceHash.c; sourceTree = "<group>"; };
@@ -609,6 +625,10 @@
 			children = (
 				D3E5F2CE0AAA5589004E361B /* cpSpace.h */,
 				D3E5F2CF0AAA5589004E361B /* cpSpace.c */,
+				0A288510F013F1EA2B3A11B7 /* cpContactSolver.c */,
+				662EE6166284A663E5106451 /* cpContactSolverCpu.c */,
+				EAB0C2C16B304DEB0EDF3A90 /* cpContactSolverScalar.c */,
+				A3222C8CAADCD7B78D3DF8A0 /* cpContactSolverAvx2.c */,
 				D34E9E6412558081002C0FE5 /* cpSpaceQuery.c */,
 				D34E9E96125581DD002C0FE5 /* cpSpaceComponent.c */,
 				D34E9EA212558A7C002C0FE5 /* cpSpaceStep.c */,
@@ -1177,6 +1197,10 @@
 				D34963D70B56CBBF00CAD239 /* cpShape.c in Sources */,
 				D34963D80B56CBBF00CAD239 /* cpCollision.c in Sources */,
 				D34963D90B56CBBF00CAD239 /* cpSpace.c in Sources */,
+				AD11F6888E9AD87C3D3F6EF0 /* cpContactSolver.c in Sources */,
+				1E99D8C872E825C294F3F53C /* cpContactSolverCpu.c in Sources */,
+				6308DF33070C4F6CBFFC033F /* cpContactSolverScalar.c in Sources */,
+				4C6F95454F18FFD5C26D7E72 /* cpContactSolverAvx2.c in Sources */,
 				D36B19510EA13B6D0028A362 /* cpDampedRotarySpring.c in Sources */,
 				D37BB76E0EAADA6300C70958 /* cpRotaryLimitJoint.c in Sources */,
 				D3A96F7B17E9F86900658436 /* cpSpaceDebug.c in Sources */,
@@ -1225,6 +1249,10 @@
 				D3C3790411063C57003EF1D9 /* cpShape.c in Sources */,
 				D3C3790511063C57003EF1D9 /* cpCollision.c in Sources */,
 				D3C3790611063C57003EF1D9 /* cpSpace.c in Sources */,
+				2641386BABCF1F05A8434F4D /* cpContactSolver.c in Sources */,
+				6CA7C2763534B0E0B826D9BF /* cpContactSolverCpu.c in Sources */,
+				061BA448262012D51541D0F5 /* cpContactSolverScalar.c in Sources */,
+				5C67CFFBEDEFE0E38A562AE4 /* cpContactSolverAvx2.c in Sources */,
 				D3C3790711063C57003EF1D9 /* cpDampedRotarySpring.c in Sources */,
 				D3C3790811063C57003EF1D9 /* cpRotaryLimitJoint.c in Sources */,
 				D3A96F7C17E9F86900658436 /* cpSpaceDebug.c in Sources */,
@@ -1299,6 +1327,10 @@
 				FF80DCEC1CA9C68500C44647 /* cpShape.c in Sources */,
 				FF80DCED1CA9C68500C44647 /* cpCollision.c in Sources */,
 				FF80DCEE1CA9C68500C44647 /* cpSpace.c in Sources */,
+				169130BFB00E034A940E1952 /* cpContactSolver.c in Sources */,
+				A72A0AAD2EB5B0DB3B91E27C /* cpContactSolverCpu.c in Sources */,
+				437A21B8A7B52EF311EEDCD5 /* cpContactSolverScalar.c in Sources */,
+				73F605DF198E9B64F267C55F /* cpContactSolverAvx2.c in Sources */,
 				FF80DCEF1CA9C68500C44647 /* cpDampedRotarySpring.c in Sources */,
 				FF80DCF01CA9C68500C44647 /* cpRotaryLimitJoint.c in Sources */,
 				FF80DCF11CA9C68500C44647 /* cpSpaceDebug.c in Sources */,

@@ -20,5 +20,14 @@ int main(void)
  failAllocation=1;CHECK(!reserveSolver(&s,bodies+1,packets+1));CHECK(s.solverMemory==solver&&s.solverBodyCapacity==bodies&&s.solverPacketCapacity==packets);
  size_t bytes=SIZE_MAX-3;CHECK(!addRegion(&bytes,1,8));bytes=0;CHECK(!addRegion(&bytes,SIZE_MAX,8));
  free(s.graphMemory);free(s.solverMemory);
- puts("PASS: scratch allocation failure preserves previous arenas; checked sizing.");return 0;
+ failAllocation=0;cpSpace *space=cpSpaceNew();
+ if(cpContactSolverIsAvailable(CP_CONTACT_SOLVER_AVX2)){
+  failAllocation=1;CHECK(!cpSpaceSetContactSolver(space,CP_CONTACT_SOLVER_AVX2));CHECK(cpSpaceGetContactSolver(space)==CP_CONTACT_SOLVER_ORIGINAL);
+  failAllocation=0;CHECK(cpSpaceSetContactSolver(space,CP_CONTACT_SOLVER_AVX2));
+  for(int i=0;i<4;i++)cpArrayPush(space->arbiters,NULL);
+  failAllocation=1;CHECK(!cpContactSolverStep(space,cpContactSolverGet(space)));CHECK(!cpContactSolverGet(space)->usedLastStep);CHECK(!cpContactSolverGet(space)->graphMemory);
+  CHECK(cpSpaceGetContactSolver(space)==CP_CONTACT_SOLVER_AVX2);space->arbiters->num=0;
+ }
+ failAllocation=0;cpSpaceFree(space);
+ puts("PASS: scratch allocation failure preserves previous arenas; checked sizing; failed selection and step allocation leave state consistent.");return 0;
 }

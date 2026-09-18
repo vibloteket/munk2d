@@ -112,9 +112,7 @@ cpSpaceInit(cpSpace *space)
 	space->dynamicShapes = cpBBTreeNew((cpSpatialIndexBBFunc)cpShapeGetBB, space->staticShapes);
 	cpBBTreeSetVelocityFunc(space->dynamicShapes, (cpBBTreeVelocityFunc)ShapeVelocityFunc);
 	
-	space->allocatedBuffers = cpArrayNew(0);
-	/* Slot0 owns the optional solver context; all ordinary buffers append. */
-	cpArrayPush(space->allocatedBuffers, NULL);
+	space->allocatedBuffers = cpSpaceBufferArrayNew();
 	
 	space->dynamicBodies = cpArrayNew(0);
 	space->staticBodies = cpArrayNew(0);
@@ -175,7 +173,7 @@ cpSpaceDestroy(cpSpace *space)
 	
 	if(space->allocatedBuffers){
 		cpContactSolverDestroy(space);
-		for(int i = 1; i < space->allocatedBuffers->num; ++i) cpfree(space->allocatedBuffers->arr[i]);
+		cpArrayFreeEach(space->allocatedBuffers, cpfree);
 		cpArrayFree(space->allocatedBuffers);
 	}
 	

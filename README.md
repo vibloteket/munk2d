@@ -53,6 +53,9 @@ licensed under the permissive MIT license. I hope you enjoy using Munk2D!
 - Extremely fast impulse solving by utilizing Erin Catto's contact persistence
   algorithm.
 - Supports sleeping objects that have come to rest to reduce the CPU load.
+- An [optional AVX2 contact solver](docs/avx2-contact-solver.md) for supported
+  double-precision x86-64 builds. Explicit per-space opt-in; the original solver
+  remains the default.
 - Support for collision event callbacks based on user definable object types.
 - Flexible collision filtering system with layers, exclusion groups and
   callbacks. \*\* Can be used to create all sorts of effects like one way
@@ -106,6 +109,14 @@ CMake enables supported interprocedural/link-time optimization for Release,
 RelWithDebInfo, and MinSizeRel builds. Disable it for controlled comparisons or
 incompatible toolchains with `-DMUNK2D_ENABLE_LTO=OFF`. Debug builds do not use
 LTO.
+
+CMake builds the optional AVX2 contact backend when the compiler target supports
+it. Runtime selection still requires CPU/OS support and explicit opt-in. Disable
+building it with `-DMUNK2D_ENABLE_AVX2_CONTACT_SOLVER=OFF`. The AVX2 translation
+unit is kept separate from cross-ISA LTO. See the
+[solver guide](docs/avx2-contact-solver.md) for availability, fallback and numerical
+behavior. Legacy project files include the new generic sources but retain the
+original-only configuration; CMake is the supported AVX2 build path.
 
 Windows: Visual Studio projects are included in the msvc/ directory. While I try
 to make sure the MSVC 10 project is up-to-date, I don't have MSVC 9 to keep that

@@ -1,4 +1,4 @@
-foreach(test_name contact_solver contact_solver_alloc)
+foreach(test_name contact_solver contact_solver_alloc contact_solver_quality)
   add_executable(chipmunk_${test_name}_tests test_${test_name}.c)
   target_include_directories(chipmunk_${test_name}_tests PRIVATE ${chipmunk_SOURCE_DIR}/include)
   target_link_libraries(chipmunk_${test_name}_tests PRIVATE chipmunk_static)
@@ -11,6 +11,14 @@ foreach(test_name contact_solver contact_solver_alloc)
   endif()
   add_test(NAME chipmunk_${test_name}_tests COMMAND chipmunk_${test_name}_tests)
   set_tests_properties(chipmunk_${test_name}_tests PROPERTIES TIMEOUT 120)
+endforeach()
+# The allocation-injection test compiles the generic scheduler itself; keep its
+# feature configuration identical to the library whose other objects it uses.
+get_target_property(_contact_solver_defs chipmunk_static COMPILE_DEFINITIONS)
+foreach(definition IN LISTS _contact_solver_defs)
+  if(definition MATCHES "^CP_AVX2_CONTACT_SOLVER=")
+    target_compile_definitions(chipmunk_contact_solver_alloc_tests PRIVATE "${definition}")
+  endif()
 endforeach()
 
 add_executable(chipmunk_basic_tests

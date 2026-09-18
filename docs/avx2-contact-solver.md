@@ -1,0 +1,149 @@
+# Optional AVX2 contact solver
+
+The original contact solver remains the default. The AVX2 solver is an explicit
+per-space opt-in for `cpSpaceStep()`, not a replacement for all workloads.
+It uses double precision, groups independent contacts with a bounded graph
+coloring, and uses four-lane SIMD. It does not add worker threads.
+
+## Selecting a solver
+
+```c
+cpSpace *space = cpSpaceNew();
+if(cpContactSolverIsAvailable(CP_CONTACT_SOLVER_AVX2)){
+    if(!cpSpaceSetContactSolver(space, CP_CONTACT_SOLVER_AVX2)){
+        /* Selection can fail, for example if scratch-context allocation fails. */
+    }
+}
+
+/* Simulation setup and cpSpaceStep() as usual. */
+
+/* This releases the optional solver's retained scratch allocations. */
+cpSpaceSetContactSolver(space, CP_CONTACT_SOLVER_ORIGINAL);
+cpSpaceFree(space);
+```
+
+`cpSpaceSetContactSolver()` returns false for an unavailable/invalid selector,
+a locked space, or allocation failure, and leaves the previous selection
+unchanged. Change it outside callbacks executed while the space is locked;
+a post-step callback can change it. Selecting the already selected mode is
+supported. Changing mode does not wake sleeping bodies, similarly to changing
+the iteration count.
+
+`cpSpaceGetContactSolver()` returns the requested mode. It does not promise that
+every individual step executes SIMD. `CP_CONTACT_SOLVER_TYPE_MAX` is reserved,
+not a selectable mode.
+
+This option applies to **`cpSpaceStep()` only**. The separate
+`cpHastySpaceStep()` keeps its existing solver and does not use this setting.
+Using a HastySpace allocation with the normal `cpSpaceStep()` follows the normal
+stepper's setting; this option is not an extension of HastySpace threading.
+
+## Availability and fallback
+
+The first backend supports the ordinary **double-precision x86-64 build**.
+Build-time compiler capability and runtime CPU/OS capability are separate:
+
+- CMake checks whether the actual compiler target supports the x86-64 AVX2 code.
+  Unsupported targets, including ARM and 32-bit x86, keep the original solver.
+- Runtime selection checks CPUID XSAVE/OSXSAVE/AVX, XGETBV XMM/YMM enablement,
+  and CPUID leaf7 AVX2. XGETBV is not executed before checking OSXSAVE.
+- Availability is checked when selecting the backend. As with conventional
+  runtime-dispatched libraries, the process is expected to run on CPUs exposing
+  a consistent supported instruction set.
+- Float builds do not enable this backend. A successful compile probe alone
+  does not imply that the runtime API will report availability.
+- No CPU-model whitelist or performance claim is implied by AVX2 availability.
+
+Even when requested and available, the whole step uses the original solver if:
+
+- there are active `cpConstraint` objects (joints, springs, motors, custom types);
+- fewer than four arbiters are active, or the iteration count is not positive;
+- the graph cannot fit the fixed12-color budget;
+- an arbiter aliases its two bodies, has an unsupported contact count, or both
+  bodies have zero inverse mass and inverse inertia;
+- checked scratch sizing/allocation cannot be satisfied.
+
+Fallback decisions are made before modifying body velocities or accumulated
+contact impulses. Cached/warm-start impulses retain the original phase/order.
+The backend never skips a collision to make a graph fit.
+
+## Numerical behavior and quality
+
+Graph coloring changes the order of some dependent contact solves compared with
+the original solver. Therefore trajectories, contact evolution and sleeping
+behavior can differ. The algorithm remains deterministic for a fixed input,
+backend, build and execution environment; identical results across solver modes,
+compiler versions or hardware are not promised.
+
+Positions, geometry, coefficients, velocities, impulse accumulators and solver
+arithmetic remain double. There is no reduction of iterations or collision
+quality settings and no mixed-precision path in this implementation.
+
+Tests compare SIMD with a scalar implementation of the same ordered formulas,
+check original fallback, and exercise physical diagnostics for penetration,
+resting behavior, friction, restitution, center-of-mass-frame energy, momentum,
+large coordinates/common velocities and mass ratios. These diagnostics are not
+a universal error bound for all applications. Check your own workloads before
+opting in, particularly sensitive stacks, extreme scales and configurations
+with changing constraints. A passing test suite does not establish superiority
+over the original solver for every quality metric.
+
+## Build isolation
+
+`MUNK2D_ENABLE_AVX2_CONTACT_SOLVER` defaults to ON, meaning **build the optional
+backend where supported**, not select it at runtime. Disable it with:
+
+```sh
+cmake -S . -B build -DBUILD_DEMOS=OFF \
+  -DMUNK2D_ENABLE_AVX2_CONTACT_SOLVER=OFF
+```
+
+Only `cpContactSolverAvx2.c` receives the AVX2 target flags. CPU detection, API,
+scheduling and allocation compile for the baseline target. The AVX2 translation
+unit is excluded from cross-ISA LTO (`-fno-lto` or `/GL-`); floating-point
+contraction is disabled for its formulas and the scalar reference.
+
+For a portable binary, do not apply `-march=native`, global `-mavx2` or an
+AVX-only `/arch` option to the rest of the library/application. This dispatch
+cannot make such globally specialized code safe on older CPUs.
+
+## Ownership and ABI
+
+No fields are added to `cpSpace`, `cpBody`, `cpArbiter` or other published
+structures. The allocation ledger is backed by the private
+`cpSpaceBufferStorage`, whose first member is an ordinary `cpArray` and whose
+additional pointer owns the optional solver context. The ordinary ledger
+contents/order are unchanged; solver state is not a fake arbiter-buffer entry
+and does not use application `userData` or a process-global registry.
+
+A context is allocated only on successful opt-in. It owns separate reusable
+arenas for graph metadata and solver working data. Large solver buffers are
+reserved only after graph eligibility is established. Active hash length and
+velocity stride depend on current work, not on retained peak capacity. No graph
+coloring is cached across steps.
+
+Arenas retain their high-water capacities until disabling the backend or
+freeing the space. A grow-allocation failure preserves the previous arenas and
+falls back for the current step. Destruction only frees storage: it never
+commits stale body/contact references from an earlier step. Allocation/free
+uses the library's existing allocator macros.
+
+The struct definitions are private API as before. Consumers must not replace
+`space->allocatedBuffers` manually or assume its owning allocation is exactly
+`sizeof(cpArray)`. Normal opaque/public API usage is unaffected.
+
+## Benchmarking
+
+MunkBench accepts an explicit selector without changing its CSV schema or size
+profiles:
+
+```sh
+./build/benchmarks/munkbench --contact-solver original --profile reference --batch auto
+./build/benchmarks/munkbench --contact-solver avx2 --profile reference --batch auto
+```
+
+An unavailable AVX2 request is an error, not a mislabeled original-only run.
+Per-step eligibility fallback still applies. Use alternating paired runs and
+original-versus-original controls, include setup costs, and check results and
+physical quality separately. Small percentage differences can be code-layout or
+measurement effects. Collision-heavy workloads may benefit while others do not.

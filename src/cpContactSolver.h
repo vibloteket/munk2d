@@ -3,6 +3,7 @@
 #define CP_CONTACT_SOLVER_INTERNAL_H
 #include "chipmunk/chipmunk_private.h"
 #include <stdint.h>
+#include <stddef.h>
 
 #ifndef CP_AVX2_CONTACT_SOLVER
 #define CP_AVX2_CONTACT_SOLVER 0
@@ -43,22 +44,35 @@ struct cpContactSolverContext {
  cpBool usedLastStep;
 };
 
-/* cpSpace's allocation ledger reserves slot0 for this optional owned context.
- * Ordinary contact/arbiter buffers begin at1. No cpSpace layout change. */
+/* A private extension of the allocation ledger, not of cpSpace or cpArray.
+ * The first member remains an ordinary cpArray: its contents/growth/freeing
+ * retain their original semantics. The optional context is owned separately. */
+typedef struct cpSpaceBufferStorage {
+ cpArray array;
+ cpContactSolverContext *solver;
+} cpSpaceBufferStorage;
+typedef char cpSpaceBufferStoragePrefixCheck[(offsetof(cpSpaceBufferStorage, array) == 0) ? 1 : -1];
+
 static inline cpContactSolverContext *
 cpContactSolverGet(const cpSpace *space)
 {
- return (cpContactSolverContext *)space->allocatedBuffers->arr[0];
+ return ((const cpSpaceBufferStorage *)space->allocatedBuffers)->solver;
 }
 
-void cpContactSolverDestroy(cpSpace *space);
-cpBool cpContactSolverStep(cpSpace *space, cpContactSolverContext *context);
-void cpContactSolverKernelScalar(cpContactSolverContext *context, int iterations);
-#if CP_AVX2_CONTACT_SOLVER && CP_USE_DOUBLES
-void cpContactSolverKernelAvx2(cpContactSolverContext *context, int iterations);
+#if defined(__GNUC__) || defined(__clang__)
+#define CP_CONTACT_SOLVER_PRIVATE __attribute__((visibility("hidden")))
+#else
+#define CP_CONTACT_SOLVER_PRIVATE
 #endif
-cpBool cpContactSolverCpuSupported(void);
+CP_CONTACT_SOLVER_PRIVATE cpArray *cpSpaceBufferArrayNew(void);
+CP_CONTACT_SOLVER_PRIVATE void cpContactSolverDestroy(cpSpace *space);
+CP_CONTACT_SOLVER_PRIVATE cpBool cpContactSolverStep(cpSpace *space, cpContactSolverContext *context);
+CP_CONTACT_SOLVER_PRIVATE void cpContactSolverKernelScalar(cpContactSolverContext *context, int iterations);
+#if CP_AVX2_CONTACT_SOLVER && CP_USE_DOUBLES
+CP_CONTACT_SOLVER_PRIVATE void cpContactSolverKernelAvx2(cpContactSolverContext *context, int iterations);
+#endif
+CP_CONTACT_SOLVER_PRIVATE cpBool cpContactSolverCpuSupported(void);
 /* Pure decision function also permits testing unavailable CPU/OS combinations. */
-cpBool cpContactSolverCheckFeatures(unsigned int maxLeaf, unsigned int ecx1,
+CP_CONTACT_SOLVER_PRIVATE cpBool cpContactSolverCheckFeatures(unsigned int maxLeaf, unsigned int ecx1,
  unsigned int ebx7, uint64_t xcr0);
 #endif
