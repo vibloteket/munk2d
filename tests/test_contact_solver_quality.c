@@ -1,4 +1,5 @@
 #include "../src/cpContactSolver.h"
+#include <stdio.h>
 #if CP_USE_DOUBLES
 #include <math.h>
 #include <stdio.h>
