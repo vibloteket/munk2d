@@ -438,6 +438,7 @@ struct cpSpace {
 	cpHashSet *cachedArbiters;
 	cpArray *pooledArbiters;
 	
+	// Entry0: optional contact-solver context; remaining entries: raw buffers.
 	cpArray *allocatedBuffers;
 	int locked;
 	

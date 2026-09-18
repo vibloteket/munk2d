@@ -133,6 +133,8 @@ typedef struct RunResult {
 	double run_time;
 } RunResult;
 
+static cpContactSolverType benchmarkContactSolver = CP_CONTACT_SOLVER_ORIGINAL;
+
 static double
 now_seconds(void)
 {
@@ -147,6 +149,7 @@ usage(const char *argv0)
 	printf("Options:\n");
 	printf("  -b, --benchmarks  Run only the named benchmarks.\n");
 	printf("  --profile NAME    Size profile: smoke, reference (default), or extended.\n");
+	printf("  --contact-solver  original (default) or avx2. Unsupported AVX2 is an error.\n");
 	printf("  -s, --size        Explicit size override; use -1 for a size sweep.\n");
 	printf("  --warmup n        Untimed independent runs before sampling. Default: 0.\n");
 	printf("  --samples n       Number of raw timing samples to emit. Default: 1.\n");
@@ -162,6 +165,11 @@ static cpSpace *
 new_space(cpFloat gx, cpFloat gy)
 {
 	cpSpace *space = cpSpaceNew();
+	if(benchmarkContactSolver != CP_CONTACT_SOLVER_ORIGINAL && !cpSpaceSetContactSolver(space, benchmarkContactSolver)){
+		fprintf(stderr, "Unable to select requested contact solver.\n");
+		cpSpaceFree(space);
+		exit(1);
+	}
 	cpSpaceSetGravity(space, cpv(gx, gy));
 	return space;
 }
@@ -1758,6 +1766,7 @@ name_selected(Benchmark *benchmark, char **names, int name_count)
 int
 main(int argc, char **argv)
 {
+	benchmarkContactSolver = CP_CONTACT_SOLVER_ORIGINAL;
 	int size_arg_set = 0;
 	int size_arg = 0;
 	int summary_json = 0;
@@ -1791,6 +1800,25 @@ main(int argc, char **argv)
 					return 1;
 				}
 				selected_names[selected_name_count++] = argv[++i];
+			}
+		} else if(strcmp(argv[i], "--contact-solver") == 0){
+			if(i + 1 >= argc){
+				fprintf(stderr, "Missing value for --contact-solver.\n");
+				free(selected_names);
+				return 2;
+			}
+			const char *value = argv[++i];
+			if(strcmp(value, "original") == 0) benchmarkContactSolver = CP_CONTACT_SOLVER_ORIGINAL;
+			else if(strcmp(value, "avx2") == 0) benchmarkContactSolver = CP_CONTACT_SOLVER_AVX2;
+			else {
+				fprintf(stderr, "Invalid contact solver: %s. Use original or avx2.\n", value);
+				free(selected_names);
+				return 2;
+			}
+			if(!cpContactSolverIsAvailable(benchmarkContactSolver)){
+				fprintf(stderr, "Requested contact solver is unavailable in this build or on this CPU/OS.\n");
+				free(selected_names);
+				return 2;
 			}
 		} else if(strcmp(argv[i], "--profile") == 0){
 			if(i + 1 >= argc){
