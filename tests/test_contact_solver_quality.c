@@ -14,7 +14,7 @@ static int failures;
 
 typedef struct {cpSpace *space;cpBody *body[MAX];cpShape *shape[MAX+1];cpConstraint *joint[MAX];int nb,ns,nj,step,steps;double scale,maxPen,tailPen,tailSpeed,frictionExcess,jointError;long contacts;int invalid;} World;
 static double max(double a,double b){return a>b?a:b;}
-static void post(cpArbiter *arb,cpSpace *space,void *data){(void)space;World *w=data;cpContactPointSet set=cpArbiterGetContactPointSet(arb);w->contacts++;
+static void post(cpArbiter *arb,cpSpace *space,void *data){(void)space;World *w=(World *)data;cpContactPointSet set=cpArbiterGetContactPointSet(arb);w->contacts++;
  for(int i=0;i<set.count;i++){double p=max(0,-set.points[i].distance/w->scale);w->maxPen=max(w->maxPen,p);if(w->step>=w->steps-240)w->tailPen=max(w->tailPen,p);}
  for(int i=0;i<arb->count;i++){struct cpContact *c=&arb->contacts[i];double excess=max(0,fabs(c->jtAcc)-arb->u*c->jnAcc)/(1+fabs(arb->u*c->jnAcc));w->frictionExcess=max(w->frictionExcess,excess);if(!isfinite(c->jnAcc)||!isfinite(c->jtAcc)||!isfinite(c->jBias)||c->jnAcc<0)w->invalid++;}
 }
