@@ -15,7 +15,10 @@ static inline V vmax(V a, V b){ return _mm256_max_pd(a, b); }
 static inline V vmin(V a, V b){ return _mm256_min_pd(a, b); }
 static inline V zero(void){ return _mm256_setzero_pd(); }
 static inline V gather(const double *p, const int *ids){
- return _mm256_i32gather_pd(p, _mm_loadu_si128((const __m128i *)ids), 8);
+ /* Four ordinary loads avoid the expensive hardware gather on older AVX2
+  * CPUs, especially with Gather Data Sampling microcode mitigations. Keep
+  * the lane order and exact double values; no solver arithmetic changes. */
+ return _mm256_setr_pd(p[ids[0]], p[ids[1]], p[ids[2]], p[ids[3]]);
 }
 #include "cpContactSolverKernel.inc"
 #include "cpContactSolverScalar.inc"

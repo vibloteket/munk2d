@@ -7,6 +7,8 @@ Changes:
 - API: Add an opt-in double-precision AVX2 contact solver for `cpSpaceStep`.
   The original solver remains the default; CPU/OS checks and conservative
   per-step fallback apply. Graph coloring can change simulation trajectories.
+- PERF: Avoid hardware gathers in the AVX2 contact solver, reducing indexed-load
+  overhead on older CPUs without changing solver arithmetic or scheduling.
 - BUILD: Isolate AVX2 code from the baseline target and cross-ISA LTO; add
   `MUNK2D_ENABLE_AVX2_CONTACT_SOLVER` to omit the optional backend.
 - TEST: Cover solver selection, memory reuse/lifetime, CPU/OS gating, unavailable
