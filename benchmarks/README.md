@@ -33,6 +33,14 @@ Run the representative reference size for every benchmark:
 ./build/benchmarks/munkbench --profile reference
 ```
 
+The original contact solver is always the default. Select the optional backend
+explicitly with `--contact-solver avx2` (or `--contact-solver original`). An AVX2
+request fails if the build or CPU/OS does not support it, rather than silently
+mislabeling an original-only measurement. Per-step eligibility fallback still
+applies. CSV columns, profile sizes and batching are unchanged. See
+[the contact-solver guide](../docs/avx2-contact-solver.md) for quality/ordering and
+fallback semantics; changed trajectories must be assessed separately from time.
+
 `reference` is the default profile. Use `smoke` for fast CI and setup-overhead
 checks, or `extended` for the original full-size workloads:
 

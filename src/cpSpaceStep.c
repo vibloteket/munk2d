@@ -21,6 +21,7 @@
 */
 
 #include "chipmunk/chipmunk_private.h"
+#include "cpContactSolver.h"
 
 //MARK: Post Step Callback Functions
 
@@ -472,7 +473,11 @@ cpSpaceStep(cpSpace *space, cpFloat dt)
 			constraint->klass->applyCachedImpulse(constraint, dt_coef);
 		}
 		
-		// Run the impulse solver.
+		// The original loop remains the default and all-or-nothing fallback.
+#if CP_AVX2_CONTACT_SOLVER && CP_USE_DOUBLES
+		cpContactSolverContext *contactSolver = cpContactSolverGet(space);
+		if(!(contactSolver && cpContactSolverStep(space, contactSolver)))
+#endif
 		for(int i=0; i<space->iterations; i++){
 			for(int j=0; j<arbiters->num; j++){
 				cpArbiterApplyImpulse((cpArbiter *)arbiters->arr[j]);

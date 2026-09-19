@@ -85,6 +85,8 @@ if(MUNK2D_ENABLE_LTO)
   endif()
 endif()
 
+option(MUNK2D_ENABLE_AVX2_CONTACT_SOLVER "Build the optional runtime-guarded x86-64 AVX2 contact solver" ON)
+
 add_subdirectory(src)
 
 if(BUILD_TESTING)

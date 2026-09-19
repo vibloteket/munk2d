@@ -24,6 +24,7 @@
 #include <string.h>
 
 #include "chipmunk/chipmunk_private.h"
+#include "cpContactSolver.h"
 
 //MARK: Contact Set Helpers
 
@@ -111,7 +112,7 @@ cpSpaceInit(cpSpace *space)
 	space->dynamicShapes = cpBBTreeNew((cpSpatialIndexBBFunc)cpShapeGetBB, space->staticShapes);
 	cpBBTreeSetVelocityFunc(space->dynamicShapes, (cpBBTreeVelocityFunc)ShapeVelocityFunc);
 	
-	space->allocatedBuffers = cpArrayNew(0);
+	space->allocatedBuffers = cpSpaceBufferArrayNew();
 	
 	space->dynamicBodies = cpArrayNew(0);
 	space->staticBodies = cpArrayNew(0);
@@ -171,6 +172,7 @@ cpSpaceDestroy(cpSpace *space)
 	cpArrayFree(space->pooledArbiters);
 	
 	if(space->allocatedBuffers){
+		cpContactSolverDestroy(space);
 		cpArrayFreeEach(space->allocatedBuffers, cpfree);
 		cpArrayFree(space->allocatedBuffers);
 	}

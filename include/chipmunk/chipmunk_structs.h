@@ -438,6 +438,7 @@ struct cpSpace {
 	cpHashSet *cachedArbiters;
 	cpArray *pooledArbiters;
 	
+	// Private allocation ledger, backed by cpSpaceBufferStorage.
 	cpArray *allocatedBuffers;
 	int locked;
 	

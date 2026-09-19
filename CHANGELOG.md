@@ -4,6 +4,15 @@
 
 Changes:
 
+- API: Add an opt-in double-precision AVX2 contact solver for `cpSpaceStep`.
+  The original solver remains the default; CPU/OS checks and conservative
+  per-step fallback apply. Graph coloring can change simulation trajectories.
+- BUILD: Isolate AVX2 code from the baseline target and cross-ISA LTO; add
+  `MUNK2D_ENABLE_AVX2_CONTACT_SOLVER` to omit the optional backend.
+- TEST: Cover solver selection, memory reuse/lifetime, CPU/OS gating, unavailable
+  builds, same-schedule scalar equivalence and physical quality diagnostics.
+- DOC: Describe solver availability, numerical behavior and benchmarking in
+  `docs/avx2-contact-solver.md`.
 - BUG: Fix stack overflow in cpBBTree when adding many shapes to a space.
   Converted recursive tree traversal functions to iterative implementations.
 - TEST: Add a first portable CMake/CTest-based C test executable.
