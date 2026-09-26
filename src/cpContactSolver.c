@@ -155,8 +155,8 @@ prepare(cpContactSolverContext *s, cpArray *arbiters)
  for(int i = 0; i < hashSize; ++i) s->hash[i] = -1;
 
  enum { groupCount = CP_CONTACT_SOLVER_COLORS*CP_CONTACT_SOLVER_KINDS };
- int heads[groupCount], tails[groupCount], sizes[groupCount] = {0};
- for(int i = 0; i < groupCount; ++i) heads[i] = tails[i] = -1;
+ int heads[groupCount], tails[groupCount], sizes[groupCount];
+ unsigned int usedKinds[CP_CONTACT_SOLVER_COLORS] = {0};
  for(int i = 0; i < count; ++i){
   cpArbiter *arb = (cpArbiter *)arbiters->arr[i];
   cpBody *a = arb->body_a, *b = arb->body_b;
@@ -176,51 +176,70 @@ prepare(cpContactSolverContext *s, cpArray *arbiters)
   link->kind = (mode*2 + (arb->u != 0))*2 + arb->count - 1;
   link->next = -1;
   int group = color*CP_CONTACT_SOLVER_KINDS + link->kind;
-  if(tails[group] >= 0) s->links[tails[group]].next = i;
-  else heads[group] = i;
+  unsigned int bit = 1u << link->kind;
+  if(usedKinds[color] & bit) s->links[tails[group]].next = i;
+  else {usedKinds[color] |= bit; heads[group] = i; sizes[group] = 0;}
   tails[group] = i;
   ++sizes[group];
  }
 
  int packets = 0;
- for(int i = 0; i < groupCount; ++i) packets += (sizes[i] + 3)/4;
+ for(int color = 0; color < CP_CONTACT_SOLVER_COLORS; ++color)
+  for(int kind = 0, bits = (int)usedKinds[color]; bits; ++kind, bits >>= 1)
+   if(bits & 1) packets += (sizes[color*CP_CONTACT_SOLVER_KINDS + kind] + 3)/4;
  if(!reserveSolver(s, s->bodyCount, packets)) return cpFalse;
  s->bodyStride = s->bodyCount;
- for(int group = 0; group < groupCount; ++group){
-  while(heads[group] >= 0){
-   int kind = group % CP_CONTACT_SOLVER_KINDS;
-   cpContactSolverPacket *p = &s->packets[s->packetCount++];
-   memset(p, 0, sizeof(*p));
-   p->mode = kind/4;
-   p->friction = (kind/2)%2;
-   p->count = kind%2 + 1;
-   for(int lane = 0; lane < 4 && heads[group] >= 0; ++lane){
-    int index = heads[group];
-    cpContactSolverLink *link = &s->links[index];
-    heads[group] = link->next;
-    cpArbiter *arb = (cpArbiter *)arbiters->arr[index];
-    cpBody *a = arb->body_a, *b = arb->body_b;
-    ++p->lanes;
-    p->a[lane] = link->a; p->b[lane] = link->b;
-    p->nx[lane] = arb->n.x; p->ny[lane] = arb->n.y;
-    p->sx[lane] = arb->surface_vr.x; p->sy[lane] = arb->surface_vr.y;
-    p->u[lane] = arb->u;
-    p->am[lane] = a->m_inv; p->ai[lane] = a->i_inv;
-    p->bm[lane] = b->m_inv; p->bi[lane] = b->i_inv;
-    for(int c = 0; c < p->count; ++c){
-     struct cpContact *from = &arb->contacts[c];
-     cpContactSolverContact *to = &p->con[c];
-     to->original[lane] = from;
-     to->r1x[lane] = from->r1.x; to->r1y[lane] = from->r1.y;
-     to->r2x[lane] = from->r2.x; to->r2y[lane] = from->r2.y;
-     to->nMass[lane] = from->nMass; to->tMass[lane] = from->tMass;
-     to->bias[lane] = from->bias; to->bounce[lane] = from->bounce;
-     to->jBias[lane] = from->jBias; to->jnAcc[lane] = from->jnAcc; to->jtAcc[lane] = from->jtAcc;
+ /* Enumerate in the same color/kind order as the original full scan. */
+ for(int color = 0; color < CP_CONTACT_SOLVER_COLORS; ++color)
+  for(int groupKind = 0, bits = (int)usedKinds[color]; bits; ++groupKind, bits >>= 1){
+   if(!(bits & 1)) continue;
+   int group = color*CP_CONTACT_SOLVER_KINDS + groupKind;
+   while(heads[group] >= 0){
+    int kind = group % CP_CONTACT_SOLVER_KINDS;
+    cpContactSolverPacket *p = &s->packets[s->packetCount++];
+    /* Active lanes are fully overwritten below. Initialize only inactive lanes. */
+    p->lanes = 0;
+    p->mode = kind/4;
+    p->friction = (kind/2)%2;
+    p->count = kind%2 + 1;
+    for(int lane = 0; lane < 4 && heads[group] >= 0; ++lane){
+     int index = heads[group];
+     cpContactSolverLink *link = &s->links[index];
+     heads[group] = link->next;
+     cpArbiter *arb = (cpArbiter *)arbiters->arr[index];
+     cpBody *a = arb->body_a, *b = arb->body_b;
+     ++p->lanes;
+     p->a[lane] = link->a; p->b[lane] = link->b;
+     p->nx[lane] = arb->n.x; p->ny[lane] = arb->n.y;
+     p->sx[lane] = arb->surface_vr.x; p->sy[lane] = arb->surface_vr.y;
+     p->u[lane] = arb->u;
+     p->am[lane] = a->m_inv; p->ai[lane] = a->i_inv;
+     p->bm[lane] = b->m_inv; p->bi[lane] = b->i_inv;
+     for(int c = 0; c < p->count; ++c){
+      struct cpContact *from = &arb->contacts[c];
+      cpContactSolverContact *to = &p->con[c];
+      to->original[lane] = from;
+      to->r1x[lane] = from->r1.x; to->r1y[lane] = from->r1.y;
+      to->r2x[lane] = from->r2.x; to->r2y[lane] = from->r2.y;
+      to->nMass[lane] = from->nMass; to->tMass[lane] = from->tMass;
+      to->bias[lane] = from->bias; to->bounce[lane] = from->bounce;
+      to->jBias[lane] = from->jBias; to->jnAcc[lane] = from->jnAcc; to->jtAcc[lane] = from->jtAcc;
+     }
+    }
+    for(int lane = p->lanes; lane < 4; ++lane){
+     p->a[lane] = p->a[0]; p->b[lane] = p->b[0];
+     p->nx[lane] = p->ny[lane] = p->sx[lane] = p->sy[lane] = p->u[lane] = 0;
+     p->am[lane] = p->ai[lane] = p->bm[lane] = p->bi[lane] = 0;
+     for(int c = 0; c < p->count; ++c){
+      cpContactSolverContact *to = &p->con[c];
+      to->original[lane] = NULL;
+      to->r1x[lane] = to->r1y[lane] = to->r2x[lane] = to->r2y[lane] = 0;
+      to->nMass[lane] = to->tMass[lane] = to->bias[lane] = to->bounce[lane] = 0;
+      to->jBias[lane] = to->jnAcc[lane] = to->jtAcc[lane] = 0;
+     }
     }
    }
-   for(int lane = p->lanes; lane < 4; ++lane){p->a[lane] = p->a[0]; p->b[lane] = p->b[0];}
   }
- }
  for(int i = 0; i < s->bodyCount; ++i){
   cpBody *b = s->bodies[i]; int stride = s->bodyStride;
   s->velocity[i] = b->v.x; s->velocity[stride+i] = b->v.y;

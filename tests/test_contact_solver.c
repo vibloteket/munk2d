@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <fenv.h>
 #include "../src/cpContactSolver.h"
 #include "chipmunk/cpHastySpace.h"
 #define CHECK(x) do { if(!(x)){fprintf(stderr,"FAIL %s:%d: %s\n",__FILE__,__LINE__,#x);exit(1);} } while(0)
@@ -160,6 +161,50 @@ static void postSolve(cpArbiter *arb,cpSpace *s,void *data)
  (void)arb;(void)data;CHECK(cpSpaceIsLocked(s));CHECK(!cpSpaceSetContactSolver(s,CP_CONTACT_SOLVER_ORIGINAL));CHECK(cpSpaceGetContactSolver(s)==CP_CONTACT_SOLVER_AVX2);callbackCount++;
  cpSpaceAddPostStepCallback(s,switchAfterStep,&callbackCount,NULL);
 }
+static cpContactSolverKernel poisonKernel;
+static int poisonKernelCalls;
+static void checkedPoisonKernel(cpContactSolverContext *s,int iterations)
+{
+ feclearexcept(FE_INVALID|FE_DIVBYZERO);
+ poisonKernel(s,iterations);
+ CHECK(!(fetestexcept(FE_INVALID|FE_DIVBYZERO)));poisonKernelCalls++;
+}
+static void poisonScratch(cpContactSolverContext *s)
+{
+ if(!s->solverMemory)return;
+ const uint64_t poison=UINT64_C(0x7ff0000000000001); /* signaling NaN */
+ for(size_t i=0;i<(size_t)s->solverBodyCapacity*6*sizeof(double);i+=sizeof(poison))memcpy((char *)s->velocity+i,&poison,sizeof(poison));
+ for(size_t i=0;i<(size_t)s->solverPacketCapacity*sizeof(cpContactSolverPacket);i+=sizeof(poison))memcpy((char *)s->packets+i,&poison,sizeof(poison));
+}
+static void poisonedPackets(void)
+{
+ Fixture a,b;make(&a,4,cpFalse);make(&b,4,cpFalse);
+ CHECK(cpSpaceSetContactSolver(a.space,CP_CONTACT_SOLVER_AVX2));CHECK(cpSpaceSetContactSolver(b.space,CP_CONTACT_SOLVER_AVX2));
+ cpContactSolverContext *s=cpContactSolverGet(a.space);poisonKernel=s->kernel;s->kernel=checkedPoisonKernel;
+ cpContactSolverGet(b.space)->kernel=cpContactSolverKernelScalar;
+ for(int cycle=0;cycle<20;cycle++){
+  int count=4+cycle%10;
+  for(int which=0;which<2;which++){
+   Fixture *f=which?&b:&a;
+   while(f->count>count)removeLast(f);while(f->count<count)addBody(f,f->count,cpFalse);
+   for(int i=0;i<count;i++){
+    cpShapeSetFriction(f->shape[i],cycle%2?0:0.7);
+    if(cycle%3==0){
+     cpSpaceRemoveShape(f->space,f->shape[i]);cpShapeFree(f->shape[i]);
+     cpShape *shape=i%2?cpCircleShapeNew(f->body[i],0.5,cpvzero):cpBoxShapeNew(f->body[i],1,1,0);
+     f->shape[i]=cpSpaceAddShape(f->space,shape);cpShapeSetFriction(shape,cycle%2?0:0.7);
+    }
+   }
+  }
+  for(int step=0;step<16;step++){
+   poisonScratch(s);cpFloat dt=step%2?1.0/120:1.0/60;
+   cpSpaceStep(a.space,dt);cpSpaceStep(b.space,dt);compare(&a,&b);
+  }
+ }
+ CHECK(poisonKernelCalls>0);cleanup(&a);cleanup(&b);
+ printf("PASS: poisoned reusable packet/velocity arenas, mixed shapes/friction, partial lanes, %d checked kernel calls.\n",poisonKernelCalls);
+}
+
 int main(void)
 {
  features();CHECK(cpContactSolverIsAvailable(CP_CONTACT_SOLVER_ORIGINAL));CHECK(!cpContactSolverIsAvailable((cpContactSolverType)99));
@@ -197,5 +242,6 @@ int main(void)
  make(&a,8,cpFalse);cpSpaceSetSleepTimeThreshold(a.space,0.5);cpBodySleep(a.body[0]);CHECK(cpBodyIsSleeping(a.body[0]));CHECK(cpSpaceSetContactSolver(a.space,CP_CONTACT_SOLVER_AVX2));CHECK(cpBodyIsSleeping(a.body[0]));CHECK(cpSpaceSetContactSolver(a.space,CP_CONTACT_SOLVER_ORIGINAL));CHECK(cpBodyIsSleeping(a.body[0]));cleanup(&a);
  makeWithSpace(&a,8,cpFalse,cpHastySpaceNew());makeWithSpace(&b,8,cpFalse,cpHastySpaceNew());a.hasty=b.hasty=cpTrue;cpHastySpaceSetThreads(a.space,1);cpHastySpaceSetThreads(b.space,1);CHECK(cpSpaceSetContactSolver(a.space,CP_CONTACT_SOLVER_AVX2));
  for(int i=0;i<12;i++){cpHastySpaceStep(a.space,1.0/60);cpHastySpaceStep(b.space,1.0/60);compare(&a,&b);}CHECK(!cpContactSolverGet(a.space)->graphMemory);cleanup(&a);cleanup(&b);
- puts("PASS: CPU/OS gating, API, original default, arena reuse/grow/shrink, direct packet/kernel and scalar equivalence, varying dt/iterations, fallback, callback locks, sleep, HastySpace independence and lifecycle.");return 0;
+ poisonedPackets();
+ puts("PASS: CPU/OS gating, API, original default, arena reuse/grow/shrink, direct packet/kernel and scalar equivalence, poisoned buffers, varying dt/iterations, fallback, callback locks, sleep, HastySpace independence and lifecycle.");return 0;
 }

@@ -4,6 +4,11 @@
 
 Changes:
 
+- PERF: Avoid initializing unused contact groups and redundantly clearing active
+  packet lanes in the opt-in AVX2 solver. Contact order and solver selection are
+  unchanged; no new public tuning options are introduced.
+- TEST: Poison reusable packet/velocity buffers to check active and padded lane
+  initialization with mixed contact shapes and friction.
 - API: Add an opt-in double-precision AVX2 contact solver for `cpSpaceStep`.
   The original solver remains the default; CPU/OS checks and conservative
   per-step fallback apply. Graph coloring can change simulation trajectories.

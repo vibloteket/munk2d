@@ -122,6 +122,13 @@ reserved only after graph eligibility is established. Active hash length and
 velocity stride depend on current work, not on retained peak capacity. No graph
 coloring is cached across steps.
 
+Preparation initializes only color/kind groups that are actually used, while
+retaining the same ascending color/kind order and order within each group.
+Active packet lanes are fully assigned; inactive lanes that the kernel can read
+are initialized explicitly. Unused contact slots are not read. This reduces
+redundant preparation work without changing solver selection or arithmetic.
+Tests poison reusable working buffers to catch stale or uninitialized reads.
+
 Arenas retain their high-water capacities until disabling the backend or
 freeing the space. A grow-allocation failure preserves the previous arenas and
 falls back for the current step. Destruction only frees storage: it never
