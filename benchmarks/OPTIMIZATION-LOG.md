@@ -258,3 +258,123 @@ quality/performance tradeoffs require explicit approval before implementation.
 - GJK/EPA calls are usually shallow; support-point work matters more than recursion depth. FrictionalPyramid EPA exits at iteration 1 about 99.5% of the time; FallingSquares exits at iteration 1–2 about 97% of the time; CollisionCallbacks commonly reaches iteration 2–3.
 - Realistic contact workloads show low L1D miss rates (roughly 0.4–1.1%); simple struct reordering has not helped.
 - Focused `cpArbiter` hot-field packing kept the structure at 184 bytes but was neutral/mixed. Focused `cpContact` packing was also neutral.
+
+## AVX2 indexed loads on Whiskey Lake (2026-09-19)
+
+- Baseline `ada5480` (PR #57). Intel Core i5-8265U, Linux 6.8.0-139,
+  microcode `0x100`, GCC 13.3.0, CMake Release (`-O3`, normal project LTO).
+  Static library; only the AVX2 translation unit uses `-mavx2`,
+  `-ffp-contract=off`, `-fno-lto`. No fast-math or native/global ISA flags.
+- The original vector kernel issues **12 `vgatherdpd` instructions per packet
+  per iteration**: six velocity components for each of two bodies. This machine
+  reports `Mitigation: Microcode` for Gather Data Sampling. Intel's
+  [GDS guidance](https://www.intel.com/content/www/us/en/developer/articles/technical/software-security-guidance/technical-documentation/gather-data-sampling.html)
+  documents added gather-result latency and recommends avoiding gathers in
+  affected hot paths. This is a strong explanation for the CPU-dependent cost,
+  not a measured separation of mitigation overhead from ordinary gather cost:
+  mitigation was **not** disabled, and `perf` was unavailable (`paranoid=4`).
+- Change only vector construction: replace `_mm256_i32gather_pd` with four scalar
+  loads assembled by `_mm256_setr_pd`. Compiled object inspection confirms
+  **12 -> 0 hardware gathers**. Keep SIMD arithmetic, operation order, packet
+  layout, coloring, iteration counts, precision, CPU guard and fallback intact.
+  No model whitelist, additional dispatch or ABI change.
+- Timing: CPU2 affinity (SMT sibling6 not isolated), powersave governor, turbo
+  enabled, **battery power**, normal desktop applications still running. No
+  governor/security/system settings changed. An initial sequential whole-suite
+  pilot had large drift, including unchanged joint controls, and is not used for
+  the results below. Four focused alternating pairs confirmed the direction;
+  then six AB/BA pairs for **all26 smoke/reference scenarios**, each using
+  `--batch auto`. Shuffle scenario order deterministically each round. No extra
+  `--warmup` runs; the pilot warmed the machine. Fresh independent worlds and
+  ordinary step/setup costs remain included. Cleanup is outside MunkBench's
+  timers. Values below are the median of paired `100*(loads/gather - 1)` for
+  `run_time`, not a ratio of separately pooled medians; negative is faster.
+
+| Scenario | Smoke | Reference |
+|---|---:|---:|
+| FallingSquares | -21.81% | -13.26% |
+| FallingCircles | -32.58% | -19.38% |
+| Tumbler | +0.40% | +0.41% |
+| AddPair | -3.78% | -3.40% |
+| MildN2 | +0.04% | +0.48% |
+| N2 | -30.18% | -15.84% |
+| Multifixture | -0.11% | +0.15% |
+| MostlyStaticSingleBody | -15.35% | -20.62% |
+| MostlyStaticMultiBody | -14.85% | -21.01% |
+| Diagonal | -1.12% | -3.61% |
+| MixedStaticDynamic | -20.73% | -20.40% |
+| BigMobile | -0.97% | -2.11% |
+| SlowExplosion | +0.44% | -1.13% |
+| FrictionalPyramid | -27.98% | -23.06% |
+| CollisionCallbacks | -34.03% | -28.11% |
+| SleepWake | -22.15% | -21.27% |
+| SurfaceVelocity | -25.96% | -22.53% |
+| SlideConstraints | -0.46% | -0.34% |
+| PivotConstraints | +1.16% | +0.98% |
+| GrooveConstraints | +0.43% | -1.38% |
+| GearConstraints | -0.73% | -0.11% |
+| RatchetConstraints | +0.58% | -1.00% |
+| RotaryLimitConstraints | +2.57% | +0.58% |
+| DampedSpringConstraints | -0.53% | -1.07% |
+| DampedRotarySpringConstraints | +0.90% | +0.06% |
+| ConstraintMix | -2.10% | +1.32% |
+
+- Including `init_time + run_time` retains the large gains. Reference examples:
+  FallingSquares -13.25%, CollisionCallbacks -28.08%, MixedStaticDynamic -19.68%,
+  MostlyStaticSingle/Multi -18.48/-18.58%. Smoke MixedStaticDynamic becomes
+  -15.80% once scene construction is included.
+- Three additional paired rounds per scenario/profile compared the unchanged
+  original solver across binaries and candidate AVX2 against itself (A/A).
+  A/A scenario medians ranged -2.78..+2.02% smoke and -1.49..+1.95% reference;
+  original controls -1.46..+1.79% smoke and -5.18..+1.06% reference.
+  Do not interpret small deltas as established gains/regressions. In particular,
+  active constraints always fall back before entering the changed kernel;
+  the small joint-control differences are not evidence of solver improvement.
+- Four further alternating three-way rounds, 16 scenarios in both profiles,
+  compared original, old AVX2 and new AVX2. Selected reference medians relative
+  to original: FallingSquares **+1.74 -> -12.47%**, FallingCircles
+  **+14.03 -> -5.65%**, FrictionalPyramid **+3.03 -> -21.78%**,
+  CollisionCallbacks **+25.39 -> -6.82%**, SurfaceVelocity
+  **+18.15 -> -9.39%**, MixedStaticDynamic **+14.16 -> -7.05%**,
+  SleepWake **+10.14 -> -10.70%**. These mode comparisons can have different
+  trajectories; only old-vs-new AVX2 isolates an implementation change.
+- **Not a universal replacement for original.** New AVX2 still measured slower
+  for smoke N2 (+11.29%) and MostlyStaticSingle/Multi (+9.73/+6.17%); reference
+  Multifixture was +3.60%. Graph preparation/copying, partial packets and failed
+  eligibility attempts remain costs. Keep opt-in behavior. No newer CPU or
+  compiler performance results were obtained here; remeasure before claiming
+  this load strategy is universally faster. Extended sizes were not measured
+  (no structural/scheduling change).
+- Validation: all26 smoke/reference checkpoint summaries (0,1,10,100,final)
+  are byte-identical between old/new **within each solver mode**, and repeat
+  exactly. This does not mean original and AVX2 trajectories match each other.
+  Added384 direct packet tests covering 1–4 lanes, all12 kinds, two shuffled
+  index layouts, 0/1/3/17 iterations, allocation-edge reads, moving frozen sides,
+  aliased padding and untouched velocity slots; active impulses and full velocity
+  storage match the same-schedule scalar reference bitwise.
+- Release15/15 and strict ASan/LSan/UBSan15/15 pass. Sanitizer build uses Debug
+  plus `-O1`: the initial unoptimized quality test hit its120s CTest timeout;
+  with `-O1` it passes in19s without changing the test. Backend-disabled14/14
+  and float solver tests3/3 pass. Changed source/test compile as C++11; no MSVC,
+  Clang or non-x86 runtime test was performed.
+
+Local raw CSVs, runner scripts, summary table and test logs were retained in
+`build/avx2-investigation/` (gitignored, not a published benchmark-data record).
+
+Reproduce with separate source/build directories for `ada5480` and the candidate
+(do not rebuild the baseline from the modified working tree):
+
+```sh
+cmake -S SOURCE -B BUILD -DBUILD_DEMOS=OFF -DBUILD_SHARED=OFF \
+  -DBUILD_BENCHMARKS=ON -DCMAKE_BUILD_TYPE=Release
+cmake --build BUILD -j4
+# Alternate BASE/CAND order each round; repeat for smoke and all scenarios.
+taskset -c 2 BASE/benchmarks/munkbench -b FallingCircles \
+  --profile reference --contact-solver avx2 --batch auto
+taskset -c 2 CAND/benchmarks/munkbench -b FallingCircles \
+  --profile reference --contact-solver avx2 --batch auto
+# Use original in both binaries for controls; CAND twice for A/A.
+# Compare summaries within each mode, not original against AVX2:
+CAND/benchmarks/munkbench --profile reference --contact-solver avx2 \
+  --summary-json --checkpoints 0,1,10,100,final
+```

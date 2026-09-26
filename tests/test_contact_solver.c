@@ -55,6 +55,104 @@ static void features(void)
  CHECK(!cpContactSolverCheckFeatures(6,required,1u<<5,6));CHECK(!cpContactSolverCheckFeatures(7,required,0,6));
  CHECK(!cpContactSolverCheckFeatures(7,required,1u<<5,0));CHECK(!cpContactSolverCheckFeatures(7,required,1u<<5,2));CHECK(!cpContactSolverCheckFeatures(7,required,1u<<5,4));
 }
+/* Exercise the runtime-selected kernel without relying on scheduler packing.
+ * Exact-sized allocations put the last body's angular bias at the allocation
+ * boundary, so ASan also checks that indexed loads read only one double. */
+static void packetKernels(cpContactSolverKernel kernel)
+{
+ enum { STRIDE = 19, COMPONENTS = 6 };
+ static const int ids[2][4] = {{18,3,12,6},{0,15,8,2}};
+ static const int iterations[] = {0,1,3,17};
+ const size_t bytes = COMPONENTS*STRIDE*sizeof(double);
+ double initial[COMPONENTS*STRIDE];
+ double *actual = (double *)malloc(bytes), *expected = (double *)malloc(bytes);
+ CHECK(actual && expected && kernel);
+ for(int component=0;component<COMPONENTS;component++)for(int body=0;body<STRIDE;body++){
+  /* Include signed zero in frozen/unreferenced storage as well as live input. */
+  initial[component*STRIDE+body] = (body+component)%7==0 ? -0.0 :
+   ((body*7+component*11)%23-11)*0.125;
+ }
+ for(int layout=0;layout<2;layout++)for(int lanes=1;lanes<=4;lanes++)
+ for(int count=1;count<=2;count++)for(int mode=0;mode<=2;mode++)
+ for(int friction=0;friction<=1;friction++){
+  cpContactSolverPacket seed;
+  cpBool writable[STRIDE] = {0};
+  memset(&seed,0,sizeof(seed));
+  seed.lanes=lanes;seed.count=count;seed.mode=mode;seed.friction=friction;
+  for(int lane=0;lane<lanes;lane++){
+   /* All writable indices are distinct. Frozen sides deliberately alias;
+    * swapping layouts tests the allocation boundary on either side, frozen
+    * or writable. The gaps in the index sets must remain untouched. */
+   seed.a[lane]=ids[layout][mode==1 ? 0 : lane];
+   seed.b[lane]=ids[1-layout][mode==2 ? 0 : lane];
+   if(mode!=1)writable[seed.a[lane]]=cpTrue;
+   if(mode!=2)writable[seed.b[lane]]=cpTrue;
+   seed.nx[lane]=(lane&1) ? -0.8 : 0.6;
+   seed.ny[lane]=(lane&1) ? 0.6 : 0.8;
+   seed.sx[lane]=(lane-2)*0.0625;seed.sy[lane]=(1-lane)*0.125;
+   seed.u[lane]=friction ? 0.5+lane*0.125 : 0.0;
+   seed.am[lane]=mode==1 ? 0.0 : 0.5+lane*0.0625;
+   seed.ai[lane]=mode==1 ? 0.0 : 0.25+lane*0.03125;
+   seed.bm[lane]=mode==2 ? 0.0 : 0.375+lane*0.03125;
+   seed.bi[lane]=mode==2 ? 0.0 : 0.1875+lane*0.0625;
+   for(int contact=0;contact<count;contact++){
+    cpContactSolverContact *c=&seed.con[contact];
+    c->r1x[lane]=(lane+1)*0.125-contact*0.25;
+    c->r1y[lane]=(contact+1)*-0.1875+lane*0.0625;
+    c->r2x[lane]=(contact+1)*0.25-lane*0.0625;
+    c->r2y[lane]=(lane-2)*0.125+contact*0.1875;
+    c->nMass[lane]=0.25+lane*0.03125+contact*0.0625;
+    c->tMass[lane]=0.1875+lane*0.03125+contact*0.0625;
+    c->bias[lane]=(lane+1)*0.125-contact*0.0625;
+    c->bounce[lane]=(lane-1)*0.0625+contact*0.125;
+    c->jBias[lane]=lane==0 ? -0.0 : (lane+contact)*0.03125;
+    c->jnAcc[lane]=0.25+(lane+contact)*0.125;
+    c->jtAcc[lane]=friction ? (lane-2)*0.03125 : -0.0;
+   }
+  }
+  /* Match scheduler padding: valid duplicate indices, zero coefficients.
+   * A full-width scatter would overwrite lane zero with its dummy velocity. */
+  for(int lane=lanes;lane<4;lane++){
+   seed.a[lane]=seed.a[0];seed.b[lane]=seed.b[0];
+  }
+  for(size_t run=0;run<sizeof(iterations)/sizeof(iterations[0]);run++){
+   cpContactSolverPacket vectorPacket, scalarPacket;
+   cpContactSolverContext vectorContext, scalarContext;
+   memcpy(&vectorPacket,&seed,sizeof(seed));memcpy(&scalarPacket,&seed,sizeof(seed));
+   memcpy(actual,initial,bytes);memcpy(expected,initial,bytes);
+   memset(&vectorContext,0,sizeof(vectorContext));
+   vectorContext.velocity=actual;vectorContext.packets=&vectorPacket;
+   vectorContext.bodyCount=vectorContext.bodyStride=STRIDE;
+   vectorContext.packetCount=1;vectorContext.kernel=kernel;
+   scalarContext=vectorContext;scalarContext.velocity=expected;
+   scalarContext.packets=&scalarPacket;scalarContext.kernel=cpContactSolverKernelScalar;
+   vectorContext.kernel(&vectorContext,iterations[run]);
+   scalarContext.kernel(&scalarContext,iterations[run]);
+   if(memcmp(actual,expected,bytes)!=0){
+    fprintf(stderr,"packet velocity mismatch: layout=%d lanes=%d contacts=%d mode=%d friction=%d iterations=%d\n",
+     layout,lanes,count,mode,friction,iterations[run]);
+    CHECK(memcmp(actual,expected,bytes)==0);
+   }
+   for(int component=0;component<COMPONENTS;component++)for(int body=0;body<STRIDE;body++){
+    int index=component*STRIDE+body;
+    CHECK(isfinite(actual[index]));
+    if(!writable[body])CHECK(memcmp(actual+index,initial+index,sizeof(double))==0);
+   }
+   /* SIMD computes dummy impulse slots, whereas scalar visits active lanes
+    * only. Compare active accumulators bitwise (including signed zero). */
+   for(int contact=0;contact<count;contact++){
+    cpContactSolverContact *a=&vectorPacket.con[contact],*b=&scalarPacket.con[contact];
+    CHECK(memcmp(a->jBias,b->jBias,lanes*sizeof(double))==0);
+    CHECK(memcmp(a->jnAcc,b->jnAcc,lanes*sizeof(double))==0);
+    CHECK(memcmp(a->jtAcc,b->jtAcc,lanes*sizeof(double))==0);
+    for(int lane=0;lane<lanes;lane++){
+     CHECK(isfinite(a->jBias[lane])&&isfinite(a->jnAcc[lane])&&isfinite(a->jtAcc[lane]));
+    }
+   }
+  }
+ }
+ free(actual);free(expected);
+}
 static int callbackCount,postStepCount;
 static void switchAfterStep(cpSpace *s,void *key,void *data){(void)key;(void)data;CHECK(!cpSpaceIsLocked(s));CHECK(cpSpaceSetContactSolver(s,CP_CONTACT_SOLVER_ORIGINAL));postStepCount++;}
 static void postSolve(cpArbiter *arb,cpSpace *s,void *data)
@@ -72,6 +170,7 @@ int main(void)
   puts("PASS: CPU/OS feature matrix, unavailable build/CPU and original-default API.");return 0;
  }
  CHECK(cpSpaceSetContactSolver(a.space,CP_CONTACT_SOLVER_AVX2));cpContactSolverContext *ctx=cpContactSolverGet(a.space);CHECK(ctx&&!ctx->graphMemory&&!ctx->solverMemory);
+ packetKernels(ctx->kernel);
  make(&b,8,cpFalse);
  for(int i=0;i<8;i++){cpSpaceStep(a.space,1.0/60);cpSpaceStep(b.space,1.0/60);compare(&a,&b);}CHECK(ctx->usedLastStep);
  void *graph=ctx->graphMemory,*solver=ctx->solverMemory;int capacity=ctx->graphCapacity;
@@ -98,5 +197,5 @@ int main(void)
  make(&a,8,cpFalse);cpSpaceSetSleepTimeThreshold(a.space,0.5);cpBodySleep(a.body[0]);CHECK(cpBodyIsSleeping(a.body[0]));CHECK(cpSpaceSetContactSolver(a.space,CP_CONTACT_SOLVER_AVX2));CHECK(cpBodyIsSleeping(a.body[0]));CHECK(cpSpaceSetContactSolver(a.space,CP_CONTACT_SOLVER_ORIGINAL));CHECK(cpBodyIsSleeping(a.body[0]));cleanup(&a);
  makeWithSpace(&a,8,cpFalse,cpHastySpaceNew());makeWithSpace(&b,8,cpFalse,cpHastySpaceNew());a.hasty=b.hasty=cpTrue;cpHastySpaceSetThreads(a.space,1);cpHastySpaceSetThreads(b.space,1);CHECK(cpSpaceSetContactSolver(a.space,CP_CONTACT_SOLVER_AVX2));
  for(int i=0;i<12;i++){cpHastySpaceStep(a.space,1.0/60);cpHastySpaceStep(b.space,1.0/60);compare(&a,&b);}CHECK(!cpContactSolverGet(a.space)->graphMemory);cleanup(&a);cleanup(&b);
- puts("PASS: CPU/OS gating, API, original default, arena reuse/grow/shrink, scalar equivalence, varying dt/iterations, fallback, callback locks, sleep, HastySpace independence and lifecycle.");return 0;
+ puts("PASS: CPU/OS gating, API, original default, arena reuse/grow/shrink, direct packet/kernel and scalar equivalence, varying dt/iterations, fallback, callback locks, sleep, HastySpace independence and lifecycle.");return 0;
 }

@@ -147,3 +147,19 @@ Per-step eligibility fallback still applies. Use alternating paired runs and
 original-versus-original controls, include setup costs, and check results and
 physical quality separately. Small percentage differences can be code-layout or
 measurement effects. Collision-heavy workloads may benefit while others do not.
+
+### Older AVX2 CPUs and indexed loads
+
+The vector kernel assembles each velocity vector from four ordinary scalar
+loads instead of using a hardware gather instruction. The arithmetic is still
+four-lane SIMD; lane order, double values, graph scheduling and fallback decisions
+are unchanged. This avoids costly gathers on older CPUs, notably Intel systems
+with Gather Data Sampling (GDS) microcode mitigation. Intel documents the added
+gather-result latency and recommends reducing gather use in affected workloads
+in its [GDS guidance](https://www.intel.com/content/www/us/en/developer/articles/technical/software-security-guidance/technical-documentation/gather-data-sampling.html).
+No security mitigation needs to be disabled.
+
+AVX2 capability alone still does not establish that this solver is faster than
+the original: graph preparation, data copying, partly filled packets and
+per-step fallback all cost time. Measure both modes on the actual workload and
+CPU. See `benchmarks/OPTIMIZATION-LOG.md` for local measurements and limitations.
