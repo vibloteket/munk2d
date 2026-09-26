@@ -12,6 +12,8 @@ foreach(test_name contact_solver contact_solver_alloc contact_solver_quality)
   add_test(NAME chipmunk_${test_name}_tests COMMAND chipmunk_${test_name}_tests)
   set_tests_properties(chipmunk_${test_name}_tests PROPERTIES TIMEOUT 120)
 endforeach()
+# Research sanitizer runs need headroom on shared virtual CPUs.
+set_tests_properties(chipmunk_contact_solver_quality_tests PROPERTIES TIMEOUT 300)
 # The allocation-injection test compiles the generic scheduler itself; keep its
 # feature configuration identical to the library whose other objects it uses.
 get_target_property(_contact_solver_defs chipmunk_static COMPILE_DEFINITIONS)
