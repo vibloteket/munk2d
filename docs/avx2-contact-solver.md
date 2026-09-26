@@ -155,6 +155,26 @@ original-versus-original controls, include setup costs, and check results and
 physical quality separately. Small percentage differences can be code-layout or
 measurement effects. Collision-heavy workloads may benefit while others do not.
 
+### Measured performance guidance (2.1.0)
+
+The backend is strictly opt-in because it does not win everywhere. Measured
+with MunkBench paired runs (median geometric means over 26-scenario suites,
+negative = faster than the original solver):
+
+- Wins on newer CPUs: roughly 3–4 % suite-wide on AMD Zen 4 (EPYC 9V74) and
+  Intel Meteor Lake / Alder Lake (Ultra 9 185H, i5-12400T), with 20–30 % in
+  contact-heavy scenes (friction pyramids, falling square piles) and additional
+  gains in collision-callback and sleep/wake scenes.
+- Scenes with few active contacts per step (a couple of resting or bouncing
+  bodies, frictionless single-point contacts) are 5–20 % **slower** on every
+  measured CPU, including Zen 4. If your typical frame has only a handful of
+  contacts, keep the original solver.
+- Older AVX2 Intel CPUs (Skylake-derived, e.g. i5-8265U) were a net loss before
+  the gather-free loads (#58) and should be re-measured per workload.
+
+Always measure with your own workload before enabling; treat the backend as a
+targeted optimization, not a universal acceleration.
+
 ### Older AVX2 CPUs and indexed loads
 
 The vector kernel assembles each velocity vector from four ordinary scalar

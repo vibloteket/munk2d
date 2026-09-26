@@ -1,30 +1,74 @@
 # Changelog
 
-## Unreleased
+## 2.1.0
+
+Released 2026-09-26.
+
+This release adds an opt-in AVX2 contact solver, a broad set of
+result-preserving performance optimizations, the MunkBench benchmark suite, a
+portable CTest suite, and several correctness fixes.
+
+Compatibility notes:
+
+- The default solver and public API are unchanged; AVX2 is only used when
+  explicitly requested per space.
+- Results are **not guaranteed to be bit-identical to 2.0.1**. The dense BBTree
+  leaf iteration (#32) changed internal broadphase iteration order, which can
+  change floating-point accumulation order and therefore trajectories in some
+  scenarios (physically equivalent; 5 of 26 reference scenarios diverge, all
+  involving sleeping/mostly-static bodies). The positive-radius segment query
+  fix (#55), the callback-triggered wake fix (#47) and the fast-math default
+  removal also change results in the previously-wrong or differently-rounded
+  cases. If you depend on replay/lockstep determinism, verify against your own
+  scenarios before upgrading.
 
 Changes:
 
-- PERF: Avoid initializing unused contact groups and redundantly clearing active
-  packet lanes in the opt-in AVX2 solver. Contact order and solver selection are
-  unchanged; no new public tuning options are introduced.
-- TEST: Poison reusable packet/velocity buffers to check active and padded lane
-  initialization with mixed contact shapes and friction.
-- API: Add an opt-in double-precision AVX2 contact solver for `cpSpaceStep`.
-  The original solver remains the default; CPU/OS checks and conservative
-  per-step fallback apply. Graph coloring can change simulation trajectories.
+- API: Add an opt-in, runtime-guarded, double-precision AVX2 contact solver
+  for `cpSpaceStep` (#57). The original solver remains the default and is
+  unchanged. Per-space selection via `cpSpaceSetContactSolver` /
+  `cpSpaceGetContactSolver`; conservative per-step fallback (active
+  constraints, few contacts, allocation failure, unsupported configurations)
+  keeps behavior safe. When enabled, graph coloring can change simulation
+  trajectories — physically equivalent, not bit-identical.
 - PERF: Avoid hardware gathers in the AVX2 contact solver, reducing indexed-load
-  overhead on older CPUs without changing solver arithmetic or scheduling.
+  overhead especially on older AVX2 CPUs (#58).
+- PERF: Avoid initializing unused contact groups and redundantly clearing active
+  packet lanes in the opt-in AVX2 solver (#59). Contact order and solver
+  selection are unchanged; no new public tuning options are introduced.
+- PERF: Result-preserving engine optimizations across broadphase, narrowphase,
+  solver and bookkeeping: dense BBTree leaf-array iteration and cheaper sparse
+  updates/reinsertion/insertion, direct built-in collision dispatch, skipped
+  default callbacks, support-point dispatch and caching by shape pair, cheaper
+  point/segment queries, bounded constraint collision filtering with
+  short-list-first probing, reduced constraint removal and sleep bookkeeping,
+  skipped impulse writes to static collision bodies, skipped unlimited
+  pivot/groove impulse clamps, reused pivot joint solver offsets, unordered
+  array removal without linear search, and zero-friction solver paths.
+- BUILD: Remove default fast-math compiler flags. Note: 2.0.1 default Release
+  builds used `-ffast-math`; 2.1.0 defaults to strict IEEE semantics. Compare
+  against a 2.0.1 build without fast-math when checking reproducibility.
+- BUILD: Enable supported IPO/LTO for optimized CMake builds
+  (`MUNK2D_ENABLE_LTO`, default ON for non-Debug builds).
 - BUILD: Isolate AVX2 code from the baseline target and cross-ISA LTO; add
   `MUNK2D_ENABLE_AVX2_CONTACT_SOLVER` to omit the optional backend.
-- TEST: Cover solver selection, memory reuse/lifetime, CPU/OS gating, unavailable
-  builds, same-schedule scalar equivalence and physical quality diagnostics.
-- DOC: Describe solver availability, numerical behavior and benchmarking in
-  `docs/avx2-contact-solver.md`.
+- BENCH: Add the MunkBench benchmark and validation suite: explicit size
+  profiles, repeatable timing samples, calibrated automatic batches, behavior
+  envelope checks, SVG galleries and a result recording workflow.
+- TEST: Add a portable CMake/CTest-based C test suite with solver selection,
+  memory reuse/lifetime, CPU/OS gating, unavailable-build, scalar-equivalence,
+  poisoned-buffer initialization, query/constraint/sleep lifecycle and physical
+  quality coverage.
+- CI: Run the portable test suite in the GitHub Actions build matrix
+  (GCC/Clang/MSVC, Linux/macOS/Windows) plus MunkBench validation.
+- BUG: Fix positive-radius space segment queries across spatial indexes, which
+  could miss hits (#55).
+- BUG: Fix contact graph restoration after callback-triggered wake (#47).
 - BUG: Fix stack overflow in cpBBTree when adding many shapes to a space.
   Converted recursive tree traversal functions to iterative implementations.
-- TEST: Add a first portable CMake/CTest-based C test executable.
-- CI: Run the portable C test suite in the GitHub Actions build matrix.
-- DOC: Document how to build and run the portable test suite with CMake/CTest.
+- DOC: Describe solver availability, numerical behavior, performance guidance
+  and benchmarking in `docs/avx2-contact-solver.md`; add benchmark reference
+  documentation; document how to build and run the portable test suite.
 - DOC: Add Munk2D logo and icon branding assets, and use the logo/favicon in the
   README and generated docs.
 
