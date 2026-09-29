@@ -45,7 +45,7 @@ licensed under the permissive MIT license. I hope you enjoy using Munk2D!
 
 ## FEATURES
 
-- Designed specifically for 2D video games.
+- Designed specifically for 2D video games, but usable in many situations.
 - Circle, convex polygon, and beveled line segment collision primitives.
 - Multiple collision primitives can be attached to a single rigid body.
 - Fast broad phase collision detection by using a bounding box tree with great
@@ -70,7 +70,6 @@ licensed under the permissive MIT license. I hope you enjoy using Munk2D!
 - Maintains a contact graph of all colliding objects.
 - Lightweight C99 implementation with no external dependencies outside the Std.
   C library.
-- Many language bindings available: http://chipmunk2d.net/bindingsAndPorts.php.
 - Simple, read the documentation: https://viblo.github.io/Munk2D/ and see!
 - Unrestrictive MIT license
 
@@ -123,17 +122,6 @@ to make sure the MSVC 10 project is up-to-date, I don't have MSVC 9 to keep that
 project updated regularly. It may not work. I'd appreciate a hand fixing it if
 that's the case.
 
-## GET UP TO DATE
-
-If you got the source from a point release download, you might want to consider
-getting the latest source from GitHub. Bugs are fixed, and new features are
-added regularly. Big changes are done in branches and tested before merging them
-in, it's rare for the point release downloads to be better or more bug free than
-the latest code.
-
-Head on over to https://github.com/viblo/Munk2D and experience the future TODAY!
-(Okay, so maybe it's not that exciting.)
-
 ## GETTING STARTED
 
 The C API documentation is in the docs/ directory.
@@ -148,19 +136,15 @@ undocumented/private APIs of Munk2D.
 
 ## SUPPORT
 
+The best way to get support for Munk2D is on its GitHub, open an Issue at 
+https://github.com/viblo/Munk2D/issues
+
+Since Munk2D shares a lot with Chipmunk2D, the same documentation and support 
+channels that Chipmunk2D uses can be useful for questions not specific to Munk2D:
+
 There is a forum for Chipmunk2D at http://chipmunk2d.net/forum/ Unfortunately
 its very inactive nowadays, but much of the discussions are still relevant.
 
-The best way to get support is to visit the Chipmunk Forums at
-http://chipmunk2d.net/forum/. There are plenty of people around using Chipmunk
-on the just about every platform I've ever heard of. If you are working on a
-commercial project and want some more direct help, Howling Moon Software is also
-available for contracting, http://howlingmoonsoftware.com/.
-
-## CONTRACTING
-
-Howling Moon Software (company of Chipmunk2D) is available for contracting if
-you want to make the physics in your game really stand out. Given their unique
-experience with Chipmunk2D, they can help you use Chipmunk (and likely Munk2D)
-to its fullest potential. Feel free to contact them through their webpage:
-http://howlingmoonsoftware.com/
+If you are working on a commercial project and need professional support,
+you can try contacting Howling Moon Software (the company behind Chipmunk2D)
+at http://howlingmoonsoftware.com/.
