@@ -82,6 +82,28 @@ CP_EXPORT void cpSpaceFree(cpSpace *space);
 CP_EXPORT int cpSpaceGetIterations(const cpSpace *space);
 CP_EXPORT void cpSpaceSetIterations(cpSpace *space, int iterations);
 
+/// Contact solver used by cpSpaceStep(). The original solver remains the default.
+/// The AVX2 solver uses double precision and a different contact order; trajectories
+/// may differ. It falls back to the original solver for active cpConstraints,
+/// unsuitable contact graphs, unsupported contacts or scratch allocation failure.
+/// This setting does not change the separate cpHastySpaceStep() solver.
+typedef enum cpContactSolverType {
+	CP_CONTACT_SOLVER_ORIGINAL = 0,
+	CP_CONTACT_SOLVER_AVX2 = 1,
+	/// Reserved, not selectable. Keeps a stable enum width and room for extensions.
+	CP_CONTACT_SOLVER_TYPE_MAX = 0x7fffffff
+} cpContactSolverType;
+
+/// Whether this build and the current CPU/OS support a contact solver.
+CP_EXPORT cpBool cpContactSolverIsAvailable(cpContactSolverType solver);
+/// Requested solver; individual steps may still use the documented fallback.
+CP_EXPORT cpContactSolverType cpSpaceGetContactSolver(const cpSpace *space);
+/// Select a solver while the space is unlocked. Returns false for an invalid or
+/// unavailable solver, a locked space, or allocation failure; leaves the previous
+/// selection unchanged. Selecting ORIGINAL releases the optional scratch storage.
+/// Does not wake sleeping bodies. The AVX2 backend is never selected automatically.
+CP_EXPORT cpBool cpSpaceSetContactSolver(cpSpace *space, cpContactSolverType solver);
+
 /// Gravity to pass to rigid bodies when integrating velocity.
 CP_EXPORT cpVect cpSpaceGetGravity(const cpSpace *space);
 CP_EXPORT void cpSpaceSetGravity(cpSpace *space, cpVect gravity);
@@ -197,8 +219,10 @@ CP_EXPORT cpShape *cpSpacePointQueryNearest(cpSpace *space, cpVect point, cpFloa
 /// Segment query callback function type.
 typedef void (*cpSpaceSegmentQueryFunc)(cpShape *shape, cpVect point, cpVect normal, cpFloat alpha, void *data);
 /// Perform a directed line segment query (like a raycast) against the space calling @c func for each shape intersected.
+/// A positive radius sweeps a disk along the segment. Callback order is not sorted by hit fraction.
 CP_EXPORT void cpSpaceSegmentQuery(cpSpace *space, cpVect start, cpVect end, cpFloat radius, cpShapeFilter filter, cpSpaceSegmentQueryFunc func, void *data);
 /// Perform a directed line segment query (like a raycast) against the space and return the first shape hit. Returns NULL if no shapes were hit.
+/// A positive radius sweeps a disk along the segment. Only hits strictly before the endpoint (alpha < 1) are selected.
 CP_EXPORT cpShape *cpSpaceSegmentQueryFirst(cpSpace *space, cpVect start, cpVect end, cpFloat radius, cpShapeFilter filter, cpSegmentQueryInfo *out);
 
 /// Rectangle Query callback function type.

@@ -74,7 +74,8 @@ static inline cpVect
 grooveConstrain(cpGrooveJoint *joint, cpVect j, cpFloat dt){
 	cpVect n = joint->grv_tn;
 	cpVect jClamp = (joint->clamp*cpvcross(j, n) > 0.0f) ? j : cpvproject(j, n);
-	return cpvclamp(jClamp, joint->constraint.maxForce*dt);
+	cpFloat maxForce = joint->constraint.maxForce;
+	return (maxForce == INFINITY ? jClamp : cpvclamp(jClamp, maxForce*dt));
 }
 
 static void

@@ -641,6 +641,7 @@ cpHastySpaceStep(cpSpace *space, cpFloat dt)
 	}
 	arbiters->num = 0;
 	
+	int arbiterCountBeforeUnlock;
 	cpSpaceLock(space); {
 		// Integrate positions
 		for(int i=0; i<bodies->num; i++){
@@ -652,7 +653,15 @@ cpHastySpaceStep(cpSpace *space, cpFloat dt)
 		cpSpacePushFreshContactBuffer(space);
 		cpSpatialIndexEach(space->dynamicShapes, (cpSpatialIndexIteratorFunc)cpShapeUpdateFunc, NULL);
 		cpSpatialIndexReindexQuery(space->dynamicShapes, (cpSpatialIndexQueryFunc)cpSpaceCollideShapes, space);
+		arbiterCountBeforeUnlock = arbiters->num;
 	} cpSpaceUnlock(space, cpFalse);
+
+	// Callback wake-ups can restore sleeping arbiters during unlock. Their
+	// saved graph links must be removed before ProcessComponents rethreads them.
+	// Other unlock sites keep those links because no graph rebuild follows.
+	for(int i=arbiterCountBeforeUnlock; i<arbiters->num; i++){
+		cpArbiterUnthread((cpArbiter *)arbiters->arr[i]);
+	}
 	
 	// Rebuild the contact graph (and detect sleeping components if sleeping is enabled)
 	cpSpaceProcessComponents(space, dt);
@@ -717,15 +726,13 @@ cpHastySpaceStep(cpSpace *space, cpFloat dt)
 			cpArbiter *arb = (cpArbiter *) arbiters->arr[i];
 			
 			const cpCollisionHandler *handlers [] = { arb->handlerAB, arb->handlerBA, arb->handlerA, arb->handlerB, &space->globalHandler};
-			for (int i=0; i<5; i++){
-				if (i%2 == 0) {
-					handlers[i]->postSolveFunc(arb, space, handlers[i]->userData);	
+			for (int j=0; j<5; j++){
+				cpCollisionPostSolveFunc postSolve = handlers[j]->postSolveFunc;
+				if(postSolve != cpCollisionHandlerDoNothing.postSolveFunc){
+					if(j%2 != 0) arb->swapped = !arb->swapped;
+					postSolve(arb, space, handlers[j]->userData);
+					if(j%2 != 0) arb->swapped = !arb->swapped;
 				}
-				else {
-					arb->swapped = !arb->swapped;
-					handlers[i]->postSolveFunc(arb, space, handlers[i]->userData);	
-					arb->swapped = !arb->swapped;
-				}	
 			}
 		}
 	} cpSpaceUnlock(space, cpTrue);

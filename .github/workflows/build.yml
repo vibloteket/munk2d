@@ -9,6 +9,483 @@ on:
     branches: master
 
 jobs:
+  munkbench-validation:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Configure CMake
+        run: >
+          cmake -B ${{ github.workspace }}/build-munkbench
+          -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          -DBUILD_DEMOS=OFF
+          -DBUILD_TESTING=ON
+          -DBUILD_BENCHMARKS=ON
+          -S ${{ github.workspace }}
+
+      - name: Build MunkBench and tests
+        run: cmake --build ${{ github.workspace }}/build-munkbench --parallel
+
+      - name: Unit tests
+        working-directory: ${{ github.workspace }}/build-munkbench
+        run: ctest --output-on-failure
+
+      - name: MunkBench validation summaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          MUNKBENCH="${{ github.workspace }}/build-munkbench/benchmarks/munkbench"
+          SUMMARY_DIR="${{ github.workspace }}/munkbench-summaries"
+          mkdir -p "$SUMMARY_DIR"
+
+          run_smoke() {
+            local benchmark="$1"
+            local checkpoints="$2"
+            shift 2
+            "$MUNKBENCH" --profile smoke --summary-json -b "$benchmark" --checkpoints "$checkpoints" "$@" \
+              > "$SUMMARY_DIR/$benchmark.json"
+          }
+
+          # Degenerate scenes become intentionally expensive after their first step.
+          # MixedStaticDynamic uses its reduced smoke-profile size.
+          run_smoke FallingSquares 0,1,10,50
+          run_smoke FallingCircles 0,1,10,50
+          run_smoke Tumbler 0,1,10,50
+          run_smoke AddPair 0,1,10,50
+          run_smoke MildN2 0,1
+          run_smoke N2 0,1,10,50
+          run_smoke Multifixture 0,1
+          run_smoke MostlyStaticSingleBody 0,1,10,25
+          run_smoke MostlyStaticMultiBody 0,1,10,50
+          run_smoke Diagonal 0,1,10,50
+          run_smoke MixedStaticDynamic 0,1,10,50 -s 1
+          run_smoke BigMobile 0,1,10,50
+          run_smoke SlowExplosion 0,1,10,50
+          run_smoke FrictionalPyramid 0,1,10,50
+          run_smoke CollisionCallbacks 0,1,10,50
+          run_smoke SleepWake 0,1,10,50,180,181,420
+          run_smoke SurfaceVelocity 0,1,10,50
+          run_smoke SlideConstraints 0,1,10,50,600
+          run_smoke PivotConstraints 0,1,10,50,600
+          run_smoke GrooveConstraints 0,1,10,50,600
+          run_smoke GearConstraints 0,1,10,50,600
+          run_smoke RatchetConstraints 0,1,10,50,600
+          run_smoke RotaryLimitConstraints 0,1,10,50,600
+          run_smoke DampedSpringConstraints 0,1,10,50,600
+          run_smoke DampedRotarySpringConstraints 0,1,10,50,600
+          run_smoke ConstraintMix 0,1,10,50,180,181,600
+
+          jq -s '{version: .[0].version, benchmarks: map(.benchmarks[]) }' \
+            "$SUMMARY_DIR"/*.json > ${{ github.workspace }}/munkbench-summary.json
+
+          jq -e '
+            .version
+            and (.benchmarks | length == 26)
+            and ([.benchmarks[].benchmark] | unique | length == 26)
+            and all(.benchmarks[];
+              (.checkpoints | length) >= 2
+              and .checkpoints[0].step == 0
+              and .simulated_steps == .checkpoints[-1].step
+              and all(.checkpoints[];
+                .invalid_values == 0
+                and .bodies >= 0
+                and .dynamic_bodies >= 0
+                and .static_bodies >= 0
+                and .kinematic_bodies >= 0
+                and .sleeping_bodies >= 0
+                and .shapes >= 0
+                and .constraints >= 0
+                and .contact_pairs >= 0
+                and .contact_points >= 0
+                and (.max_linear_velocity // 0) < 1e8
+                and (.max_angular_velocity // 0) < 1e8
+              )
+            )
+          ' ${{ github.workspace }}/munkbench-summary.json
+
+          jq -e '
+            (.benchmarks[] | select(.benchmark == "FrictionalPyramid") | .checkpoints[-1].contact_pairs) > 0
+            and (.benchmarks[] | select(.benchmark == "CollisionCallbacks") | .benchmark_metrics |
+              .begin_count > 0 and .pre_solve_count > 0 and .post_solve_count > 0
+              and .wildcard_count > 0 and .pre_solve_count > .post_solve_count)
+            and ((.benchmarks[] | select(.benchmark == "SleepWake") | .checkpoints[] |
+              select(.step == 50) | .sleeping_bodies) > 0)
+            and ((.benchmarks[] | select(.benchmark == "SleepWake") | .checkpoints[] |
+              select(.step == 181) | .sleeping_bodies)
+              < (.benchmarks[] | select(.benchmark == "SleepWake") | .checkpoints[] |
+                select(.step == 180) | .sleeping_bodies))
+            and ([.benchmarks[] | select(.benchmark | endswith("Constraints"))] | length == 8)
+            and all(.benchmarks[] | select(.benchmark | endswith("Constraints"));
+              .benchmark_metrics.constraint_count == .size
+              and (.benchmark_metrics.constraint_kind >= 0 and .benchmark_metrics.constraint_kind < 8)
+              and (.benchmark_metrics.max_error | isfinite)
+              and (.benchmark_metrics.sum_error | isfinite)
+              and (.benchmark_metrics.peak_error | isfinite)
+              and (.benchmark_metrics.peak_impulse | isfinite)
+              and .benchmark_metrics.peak_error > 0
+              and .benchmark_metrics.peak_impulse > 0)
+            and (.benchmarks[] | select(.benchmark == "ConstraintMix") | .benchmark_metrics |
+              .constraint_count > 0 and .type_count == 10
+              and .wake_body_was_sleeping == true and .wake_body_is_awake == true
+              and (.per_type | length == 10)
+              and all(.per_type[];
+                .constraint_count > 0
+                and (.max_error | isfinite)
+                and (.sum_error | isfinite)
+                and (.peak_error | isfinite) and .peak_error > 0
+                and (.peak_impulse | isfinite) and .peak_impulse > 0))
+          ' ${{ github.workspace }}/munkbench-summary.json
+
+      - name: MunkBench smoke SVG snapshots
+        if: github.event_name == 'pull_request'
+        shell: bash
+        run: |
+          set -euo pipefail
+          SVG_DIR="${{ github.workspace }}/munkbench-smoke-svg"
+          mkdir -p "$SVG_DIR"
+          MUNKBENCH="${{ github.workspace }}/build-munkbench/benchmarks/munkbench"
+
+          # Keep these sizes and final steps aligned with the JSON smoke runs above.
+          declare -A SIZES=(
+            [FallingSquares]=10
+            [FallingCircles]=10
+            [Tumbler]=50
+            [AddPair]=100
+            [MildN2]=10
+            [N2]=25
+            [Multifixture]=5
+            [MostlyStaticSingleBody]=10
+            [MostlyStaticMultiBody]=10
+            [Diagonal]=2
+            [MixedStaticDynamic]=1
+            [BigMobile]=1
+            [SlowExplosion]=100
+            [FrictionalPyramid]=8
+            [CollisionCallbacks]=24
+            [SleepWake]=20
+            [SurfaceVelocity]=24
+            [ConstraintMix]=100
+          )
+          declare -A STEPS=(
+            [FallingSquares]=50
+            [FallingCircles]=50
+            [Tumbler]=50
+            [AddPair]=50
+            [MildN2]=1
+            [N2]=50
+            [Multifixture]=1
+            [MostlyStaticSingleBody]=25
+            [MostlyStaticMultiBody]=50
+            [Diagonal]=50
+            [MixedStaticDynamic]=50
+            [BigMobile]=50
+            [SlowExplosion]=50
+            [FrictionalPyramid]=50
+            [CollisionCallbacks]=50
+            [SleepWake]=420
+            [SurfaceVelocity]=50
+            [ConstraintMix]=600
+          )
+          BENCHMARKS=(FallingSquares FallingCircles Tumbler AddPair MildN2 N2 Multifixture \
+            MostlyStaticSingleBody MostlyStaticMultiBody Diagonal MixedStaticDynamic \
+            BigMobile SlowExplosion FrictionalPyramid CollisionCallbacks SleepWake SurfaceVelocity ConstraintMix)
+
+          for bench in "${BENCHMARKS[@]}"; do
+            size=${SIZES[$bench]}
+            step=${STEPS[$bench]}
+            out="$SVG_DIR/${bench}_smoke.svg"
+            echo "Rendering $bench smoke snapshot (size $size, step $step) ..."
+            "$MUNKBENCH" --profile smoke -b "$bench" -s "$size" --svg "$out" --step "$step"
+            grep -q '<svg' "$out"
+            grep -q '</svg>' "$out"
+          done
+
+          GALLERY="$SVG_DIR/index.html"
+          {
+            echo '<!DOCTYPE html>'
+            echo '<html><head><meta charset="utf-8"><title>MunkBench Smoke Gallery</title>'
+            echo '<style>'
+            echo 'body { font-family: system-ui, sans-serif; background: #1a1a2e; color: #e0e0e0; padding: 2rem; }'
+            echo 'h1 { color: #7dd3fc; }'
+            echo '.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)); gap: 1.5rem; }'
+            echo '.card { background: #16213e; border-radius: 8px; padding: 1rem; border: 1px solid #0f3460; }'
+            echo '.card h2 { margin: 0 0 0.25rem; font-size: 0.9rem; color: #a0a0b0; }'
+            echo '.card .meta { font-size: 0.7rem; color: #777; margin-bottom: 0.5rem; }'
+            echo '.card svg { width: 100%; height: auto; background: #f8f8f8; border-radius: 3px; display: block; }'
+            echo '</style></head><body>'
+            echo '<h1>MunkBench Smoke Gallery</h1>'
+            echo '<p>One snapshot per benchmark at the same size and final step as the PR smoke validation. Build: ${{ github.sha }} ${{ github.ref_name }}</p>'
+            echo '<div class="grid">'
+            for bench in "${BENCHMARKS[@]}"; do
+              echo "<div class='card'><h2>${bench}</h2>"
+              echo "<div class='meta'>size: ${SIZES[$bench]} &middot; smoke step: ${STEPS[$bench]}</div>"
+              cat "$SVG_DIR/${bench}_smoke.svg"
+              echo '</div>'
+            done
+            echo '</div></body></html>'
+          } > "$GALLERY"
+
+      - uses: actions/upload-artifact@v4
+        if: github.event_name == 'pull_request' && always()
+        with:
+          name: munkbench-smoke-gallery
+          path: ${{ github.workspace }}/munkbench-smoke-svg/
+
+      - name: Build baseline MunkBench
+        if: github.event_name == 'pull_request'
+        id: baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags --depth=1 origin "${{ github.event.pull_request.base.sha }}"
+          git worktree add --detach "${{ runner.temp }}/munkbench-base" FETCH_HEAD
+          if [ ! -f "${{ runner.temp }}/munkbench-base/benchmarks/munkbench.c" ]; then
+            echo "PR base predates MunkBench; skipping baseline comparison."
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          cmake -B "${{ runner.temp }}/munkbench-base-build" \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DBUILD_DEMOS=OFF -DBUILD_TESTING=OFF -DBUILD_BENCHMARKS=ON \
+            -S "${{ runner.temp }}/munkbench-base"
+          cmake --build "${{ runner.temp }}/munkbench-base-build" --target munkbench --parallel
+          echo "available=true" >> "$GITHUB_OUTPUT"
+
+      - name: Compare MunkBench behavior envelope with PR base
+        if: github.event_name == 'pull_request' && steps.baseline.outputs.available == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          MUNKBENCH="${{ runner.temp }}/munkbench-base-build/benchmarks/munkbench"
+          SUMMARY_DIR="${{ runner.temp }}/munkbench-base-summaries"
+          mkdir -p "$SUMMARY_DIR"
+
+          run_smoke() {
+            local benchmark="$1"
+            local checkpoints="$2"
+            shift 2
+            "$MUNKBENCH" --summary-json -b "$benchmark" --checkpoints "$checkpoints" "$@" \
+              > "$SUMMARY_DIR/$benchmark.json"
+          }
+
+          # The base revision can predate --profile, so pass every smoke size explicitly.
+          run_smoke FallingSquares 0,1,10,50 -s 10
+          run_smoke FallingCircles 0,1,10,50 -s 10
+          run_smoke Tumbler 0,1,10,50 -s 50
+          run_smoke AddPair 0,1,10,50 -s 100
+          run_smoke MildN2 0,1 -s 10
+          run_smoke N2 0,1,10,50 -s 25
+          run_smoke Multifixture 0,1 -s 5
+          run_smoke MostlyStaticSingleBody 0,1,10,25 -s 10
+          run_smoke MostlyStaticMultiBody 0,1,10,50 -s 10
+          run_smoke Diagonal 0,1,10,50 -s 2
+          run_smoke MixedStaticDynamic 0,1,10,50 -s 1
+          run_smoke BigMobile 0,1,10,50 -s 1
+          run_smoke SlowExplosion 0,1,10,50 -s 100
+          run_smoke FrictionalPyramid 0,1,10,50 -s 8
+          run_smoke CollisionCallbacks 0,1,10,50 -s 24
+          run_smoke SleepWake 0,1,10,50,180,181,420 -s 20
+          run_smoke SurfaceVelocity 0,1,10,50 -s 24
+
+          jq -s '{version: .[0].version, benchmarks: map(.benchmarks[]) }' \
+            "$SUMMARY_DIR"/*.json > "${{ runner.temp }}/munkbench-base-summary.json"
+          bun benchmarks/tools/compare-behavior.ts \
+            --baseline "${{ runner.temp }}/munkbench-base-summary.json" \
+            --candidate "${{ github.workspace }}/munkbench-summary.json"
+
+      - name: Compare MunkBench snapshots with PR base
+        if: github.event_name == 'pull_request' && steps.baseline.outputs.available == 'true'
+        id: gallery_diff
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE_DIR="${{ runner.temp }}/munkbench-base-svg"
+          DIFF_DIR="${{ github.workspace }}/munkbench-email-gallery"
+          MUNKBENCH="${{ runner.temp }}/munkbench-base-build/benchmarks/munkbench"
+          mkdir -p "$BASE_DIR"
+          declare -A SIZES=(
+            [FallingSquares]=10 [FallingCircles]=10 [Tumbler]=50 [AddPair]=100
+            [MildN2]=10 [N2]=25 [Multifixture]=5 [MostlyStaticSingleBody]=10
+            [MostlyStaticMultiBody]=10 [Diagonal]=2 [MixedStaticDynamic]=1
+            [BigMobile]=1 [SlowExplosion]=100 [FrictionalPyramid]=8
+            [CollisionCallbacks]=24 [SleepWake]=20 [SurfaceVelocity]=24 [ConstraintMix]=100
+          )
+          declare -A STEPS=(
+            [FallingSquares]=50 [FallingCircles]=50 [Tumbler]=50 [AddPair]=50
+            [MildN2]=1 [N2]=50 [Multifixture]=1 [MostlyStaticSingleBody]=25
+            [MostlyStaticMultiBody]=50 [Diagonal]=50 [MixedStaticDynamic]=50
+            [BigMobile]=50 [SlowExplosion]=50 [FrictionalPyramid]=50
+            [CollisionCallbacks]=50 [SleepWake]=420 [SurfaceVelocity]=50 [ConstraintMix]=600
+          )
+          BENCHMARKS=(FallingSquares FallingCircles Tumbler AddPair MildN2 N2 Multifixture \
+            MostlyStaticSingleBody MostlyStaticMultiBody Diagonal MixedStaticDynamic \
+            BigMobile SlowExplosion FrictionalPyramid CollisionCallbacks SleepWake SurfaceVelocity ConstraintMix)
+          for bench in "${BENCHMARKS[@]}"; do
+            if grep -q "{\"${bench}\"," "${{ runner.temp }}/munkbench-base/benchmarks/munkbench.c"; then
+              "$MUNKBENCH" -b "$bench" -s "${SIZES[$bench]}" \
+                --svg "$BASE_DIR/${bench}_smoke.svg" --step "${STEPS[$bench]}"
+            else
+              printf '<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="300"><rect width="100%%" height="100%%" fill="white"/><text x="40" y="150" font-size="32">%s is new in this PR</text></svg>\n' "$bench" > "$BASE_DIR/${bench}_smoke.svg"
+            fi
+          done
+          sudo apt-get update
+          sudo apt-get install -y librsvg2-bin
+          ./scripts/compare-munkbench-gallery \
+            "${{ github.workspace }}/munkbench-smoke-svg" "$BASE_DIR" "$DIFF_DIR"
+          if [[ -s "$DIFF_DIR/changed.txt" ]]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Email changed MunkBench snapshots
+        if: github.event_name == 'pull_request' && steps.gallery_diff.outputs.changed == 'true'
+        continue-on-error: true
+        env:
+          SMTP_SERVER: ${{ vars.GALLERY_SMTP_SERVER }}
+          SMTP_PORT: ${{ vars.GALLERY_SMTP_PORT }}
+          SMTP_USERNAME: ${{ vars.GALLERY_SMTP_USERNAME }}
+          SMTP_PASSWORD: ${{ secrets.GALLERY_EMAIL_PASSWORD }}
+          EMAIL_FROM: ${{ vars.GALLERY_EMAIL_FROM }}
+          EMAIL_TO: ${{ vars.GALLERY_EMAIL_TO }}
+          GALLERY_DIR: ${{ github.workspace }}/munkbench-email-gallery
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          ACTIONS_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          COMMIT_SHA: ${{ github.event.pull_request.head.sha }}
+        run: ./scripts/send-munkbench-gallery-email
+
+      - uses: actions/upload-artifact@v4
+        if: github.event_name == 'pull_request' && steps.gallery_diff.outputs.changed == 'true'
+        with:
+          name: munkbench-changed-images
+          path: ${{ github.workspace }}/munkbench-email-gallery/
+
+      - name: MunkBench full SVG gallery (all benchmarks, 3 checkpoints each)
+        if: github.event_name == 'push'
+        shell: bash
+        run: |
+          set -euo pipefail
+          SVG_DIR="${{ github.workspace }}/munkbench-svg"
+          mkdir -p "$SVG_DIR"
+          MUNKBENCH="${{ github.workspace }}/build-munkbench/benchmarks/munkbench"
+
+          # Benchmark name -> {steps, smoke_size} (from munkbench.c benchmark table)
+          declare -A STEPS=(
+            [FallingSquares]=1300
+            [FallingCircles]=1300
+            [Tumbler]=1500
+            [AddPair]=1000
+            [MildN2]=100
+            [N2]=100
+            [Multifixture]=500
+            [MostlyStaticSingleBody]=400
+            [MostlyStaticMultiBody]=400
+            [Diagonal]=1000
+            [MixedStaticDynamic]=400
+            [BigMobile]=1000
+            [SlowExplosion]=1000
+            [FrictionalPyramid]=900
+            [CollisionCallbacks]=600
+            [SleepWake]=420
+            [SurfaceVelocity]=600
+            [ConstraintMix]=600
+          )
+          declare -A SIZES=(
+            [FallingSquares]=10
+            [FallingCircles]=10
+            [Tumbler]=50
+            [AddPair]=100
+            [MildN2]=10
+            [N2]=25
+            [Multifixture]=5
+            [MostlyStaticSingleBody]=10
+            [MostlyStaticMultiBody]=10
+            [Diagonal]=2
+            [MixedStaticDynamic]=100
+            [BigMobile]=1
+            [SlowExplosion]=100
+            [FrictionalPyramid]=8
+            [CollisionCallbacks]=24
+            [SleepWake]=20
+            [SurfaceVelocity]=24
+            [ConstraintMix]=100
+          )
+
+          BENCHMARKS=(FallingSquares FallingCircles Tumbler AddPair MildN2 N2 Multifixture \
+            MostlyStaticSingleBody MostlyStaticMultiBody Diagonal MixedStaticDynamic \
+            BigMobile SlowExplosion FrictionalPyramid CollisionCallbacks SleepWake SurfaceVelocity ConstraintMix)
+
+          for bench in "${BENCHMARKS[@]}"; do
+            steps=${STEPS[$bench]}
+            size=${SIZES[$bench]}
+            mid=$(( steps / 2 ))
+            for label in start mid end; do
+              case $label in
+                start) step=1 ;;
+                mid)   step=$mid ;;
+                end)   step=$steps ;;
+              esac
+              out="$SVG_DIR/${bench}_${label}.svg"
+              echo "Rendering $bench $label (size $size, step $step / $steps) ..."
+              "$MUNKBENCH" --profile smoke -b "$bench" -s "$size" --svg "$out" --step "$step"
+              grep -q '<svg' "$out"
+              grep -q '</svg>' "$out"
+            done
+          done
+
+          # Build a gallery page
+          GALLERY="$SVG_DIR/index.html"
+          {
+            echo '<!DOCTYPE html>'
+            echo '<html><head><meta charset="utf-8"><title>MunkBench Gallery</title>'
+            echo '<style>'
+            echo 'body { font-family: system-ui, sans-serif; background: #1a1a2e; color: #e0e0e0; padding: 2rem; }'
+            echo 'h1 { color: #7dd3fc; }'
+            echo '.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(680px, 1fr)); gap: 1.5rem; }'
+            echo '.card { background: #16213e; border-radius: 8px; padding: 1rem; border: 1px solid #0f3460; }'
+            echo '.card h2 { margin: 0 0 0.25rem 0; font-size: 0.85rem; color: #a0a0b0; }'
+            echo '.card .steps { font-size: 0.7rem; color: #555; margin-bottom: 0.5rem; }'
+            echo '.card .row { display: flex; gap: 0.5rem; }'
+            echo '.card .row > div { flex: 1; }'
+            echo '.card .row .label { font-size: 0.65rem; color: #666; text-align: center; margin-top: 0.25rem; }'
+            echo '.card svg { width: 100%; height: auto; background: #f8f8f8; border-radius: 3px; display: block; }'
+            echo '</style></head><body>'
+            echo '<h1>MunkBench Gallery</h1>'
+            echo '<p>Start / mid / end snapshots at each benchmark&rsquo;s configured minimum size. Build: ${{ github.sha }} ${{ github.ref_name }}</p>'
+            echo '<div class="grid">'
+            for bench in "${BENCHMARKS[@]}"; do
+              steps=${STEPS[$bench]}
+              size=${SIZES[$bench]}
+              echo "<div class='card'>"
+              echo "<h2>${bench}</h2><div class='steps'>size: ${size} &middot; total steps: ${steps}</div>"
+              echo "<div class='row'>"
+              for label in start mid end; do
+                echo "<div>"
+                cat "$SVG_DIR/${bench}_${label}.svg"
+                case $label in
+                  start) step_label="step 1" ;;
+                  mid)   step_label="step $(( steps / 2 ))" ;;
+                  end)   step_label="step ${steps}" ;;
+                esac
+                echo "<div class='label'>${step_label}</div>"
+                echo '</div>'
+              done
+              echo '</div></div>'
+            done
+            echo '</div></body></html>'
+          } > "$GALLERY"
+
+      - uses: actions/upload-artifact@v4
+        if: github.event_name == 'push' && always()
+        with:
+          name: munkbench-full-gallery
+          path: ${{ github.workspace }}/munkbench-svg/
+
   build:
     runs-on: ${{ matrix.os }}
 
@@ -87,6 +564,6 @@ jobs:
 
       - name: Test
         working-directory: ${{ steps.strings.outputs.build-output-dir }}
-      # Execute tests defined by the CMake configuration. Note that --build-config is needed because the default Windows generator is a multi-config generator (Visual Studio generator).
-      # See https://cmake.org/cmake/help/latest/manual/ctest.1.html for more detail
+        # Execute tests defined by the CMake configuration. Note that --build-config is needed because the default Windows generator is a multi-config generator (Visual Studio generator).
+        # See https://cmake.org/cmake/help/latest/manual/ctest.1.html for more detail
         run: ctest --build-config ${{ matrix.build_type }} --output-on-failure

@@ -74,6 +74,12 @@ cpArrayPop(cpArray *arr)
 void
 cpArrayDeleteObj(cpArray *arr, void *obj)
 {
+	// Even with duplicates, removing a matching last entry leaves the same
+	// array as replacing the first match with that equal last value.
+	if(arr->num > 0 && arr->arr[arr->num - 1] == obj){
+		arr->arr[--arr->num] = NULL;
+		return;
+	}
 	for(int i=0; i<arr->num; i++){
 		if(arr->arr[i] == obj){
 			arr->num--;

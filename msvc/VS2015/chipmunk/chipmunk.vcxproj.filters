@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
     <Filter Include="include">
@@ -172,6 +172,18 @@
       <Filter>src</Filter>
     </ClCompile>
     <ClCompile Include="..\..\..\src\cpSpaceStep.c">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\cpContactSolver.c">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\cpContactSolverCpu.c">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\cpContactSolverScalar.c">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\src\cpContactSolverAvx2.c">
       <Filter>src</Filter>
     </ClCompile>
     <ClCompile Include="..\..\..\src\cpSpatialIndex.c">

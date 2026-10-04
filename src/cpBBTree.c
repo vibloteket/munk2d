@@ -22,8 +22,15 @@
 
 #include "stdlib.h"
 #include "stdio.h"
+#include <limits.h>
 
 #include "chipmunk/chipmunk_private.h"
+
+// Use the default 64-bit leaf's timestamp padding without growing Node.
+// Preserve the existing layout and removal path for other configurations.
+#if UINTPTR_MAX == UINT64_MAX && UINT_MAX == UINT32_MAX && !defined(CP_TIMESTAMP_TYPE)
+#define CP_BBTREE_LEAF_INDEX
+#endif
 
 static inline cpSpatialIndexClass *Klass(void);
 
@@ -71,6 +78,7 @@ struct cpBBTree {
 	cpBBTreeVelocityFunc velocityFunc;
 	
 	cpHashSet *leaves;
+	cpArray *leafArray;
 	Node *root;
 	
 	Node *pooledNodes;
@@ -92,6 +100,9 @@ struct Node {
 		// Leaves
 		struct {
 			cpTimestamp stamp;
+#ifdef CP_BBTREE_LEAF_INDEX
+			int arrayIndex;
+#endif
 			Pair *pairs;
 		} leaf;
 	} node;
@@ -102,6 +113,9 @@ struct Node {
 #define B node.children.b
 #define STAMP node.leaf.stamp
 #define PAIRS node.leaf.pairs
+#ifdef CP_BBTREE_LEAF_INDEX
+#define ARRAY_INDEX node.leaf.arrayIndex
+#endif
 
 typedef struct Thread {
 	Pair *prev;
@@ -117,10 +131,8 @@ struct Pair {
 //MARK: Misc Functions
 
 static inline cpBB
-GetBB(cpBBTree *tree, void *obj)
+GetBBForBounds(cpBBTree *tree, void *obj, cpBB bb)
 {
-	cpBB bb = tree->spatialIndex.bbfunc(obj);
-	
 	cpBBTreeVelocityFunc velocityFunc = tree->velocityFunc;
 	if(velocityFunc){
 		cpFloat coef = 0.1f;
@@ -132,6 +144,12 @@ GetBB(cpBBTree *tree, void *obj)
 	} else {
 		return bb;
 	}
+}
+
+static inline cpBB
+GetBB(cpBBTree *tree, void *obj)
+{
+	return GetBBForBounds(tree, obj, tree->spatialIndex.bbfunc(obj));
 }
 
 static inline cpBBTree *
@@ -370,8 +388,13 @@ SubtreeInsert(Node *subtree, Node *leaf, cpBBTree *tree)
 		// Walk down the tree iteratively to find the leaf to pair with.
 		Node *node = subtree;
 		while(!NodeIsLeaf(node)){
-			cpFloat cost_a = cpBBArea(node->B->bb) + cpBBMergedArea(node->A->bb, leaf->bb);
-			cpFloat cost_b = cpBBArea(node->A->bb) + cpBBMergedArea(node->B->bb, leaf->bb);
+			cpBB a = node->A->bb;
+			cpBB b = node->B->bb;
+			cpBB leafBB = leaf->bb;
+			cpFloat cost_a = (b.r - b.l)*(b.t - b.b) +
+				(cpfmax(a.r, leafBB.r) - cpfmin(a.l, leafBB.l))*(cpfmax(a.t, leafBB.t) - cpfmin(a.b, leafBB.b));
+			cpFloat cost_b = (a.r - a.l)*(a.t - a.b) +
+				(cpfmax(b.r, leafBB.r) - cpfmin(b.l, leafBB.l))*(cpfmax(b.t, leafBB.t) - cpfmin(b.b, leafBB.b));
 			
 			if(cost_a == cost_b){
 				cost_a = cpBBProximity(node->A->bb, leaf->bb);
@@ -431,7 +454,7 @@ SubtreeQuery(Node *subtree, void *obj, cpBB bb, cpSpatialIndexQueryFunc func, vo
 
 
 static cpFloat
-SubtreeSegmentQuery(Node *subtree, void *obj, cpVect a, cpVect b, cpFloat t_exit, cpSpatialIndexSegmentQueryFunc func, void *data)
+SubtreeSegmentQuery(Node *subtree, void *obj, cpVect a, cpVect b, cpFloat radius, cpFloat t_exit, cpSpatialIndexSegmentQueryFunc func, void *data)
 {
 	CP_STACK_INIT(stack);
 	
@@ -442,8 +465,13 @@ SubtreeSegmentQuery(Node *subtree, void *obj, cpVect a, cpVect b, cpFloat t_exit
 		if(NodeIsLeaf(node)){
 			t_exit = cpfmin(t_exit, func(obj, node->obj, data));
 		} else {
-			cpFloat t_a = cpBBSegmentQuery(node->A->bb, a, b);
-			cpFloat t_b = cpBBSegmentQuery(node->B->bb, a, b);
+			cpBB bb_a = node->A->bb, bb_b = node->B->bb;
+			if(radius > 0.0f){
+				bb_a = cpBBNew(bb_a.l - radius, bb_a.b - radius, bb_a.r + radius, bb_a.t + radius);
+				bb_b = cpBBNew(bb_b.l - radius, bb_b.b - radius, bb_b.r + radius, bb_b.t + radius);
+			}
+			cpFloat t_a = cpBBSegmentQuery(bb_a, a, b);
+			cpFloat t_b = cpBBSegmentQuery(bb_b, a, b);
 			
 			// Push the farther child first so the nearer child is processed first (LIFO).
 			// This maximizes early pruning via t_exit.
@@ -606,7 +634,23 @@ LeafUpdate(Node *leaf, cpBBTree *tree)
 	cpBB bb = tree->spatialIndex.bbfunc(leaf->obj);
 	
 	if(!cpBBContainsBB(leaf->bb, bb)){
-		leaf->bb = GetBB(tree, leaf->obj);
+		Node *staticRoot = GetRootIfTree(tree->spatialIndex.staticIndex);
+		if(leaf->PAIRS == NULL && tree->velocityFunc && staticRoot == NULL){
+			cpVect velocity = tree->velocityFunc(leaf->obj);
+			cpFloat width = bb.r - bb.l;
+			cpFloat height = bb.t - bb.b;
+			if(cpvlengthsq(velocity) >= 64.0f*64.0f && width >= 0.5f && height >= 0.5f){
+				cpFloat coef = 0.3f;
+				cpFloat x = width*coef;
+				cpFloat y = height*coef;
+				cpVect v = cpvmult(velocity, coef);
+				leaf->bb = cpBBNew(bb.l + cpfmin(-x, v.x), bb.b + cpfmin(-y, v.y), bb.r + cpfmax(x, v.x), bb.t + cpfmax(y, v.y));
+			} else {
+				leaf->bb = GetBBForBounds(tree, leaf->obj, bb);
+			}
+		} else {
+			leaf->bb = GetBBForBounds(tree, leaf->obj, bb);
+		}
 		
 		root = SubtreeRemove(root, leaf, tree);
 		tree->root = SubtreeInsert(root, leaf, tree);
@@ -668,6 +712,7 @@ cpBBTreeInit(cpBBTree *tree, cpSpatialIndexBBFunc bbfunc, cpSpatialIndex *static
 	tree->velocityFunc = NULL;
 	
 	tree->leaves = cpHashSetNew(0, (cpHashSetEqlFunc)leafSetEql);
+	tree->leafArray = cpArrayNew(0);
 	tree->root = NULL;
 	
 	tree->pooledNodes = NULL;
@@ -699,6 +744,7 @@ static void
 cpBBTreeDestroy(cpBBTree *tree)
 {
 	cpHashSetFree(tree->leaves);
+	cpArrayFree(tree->leafArray);
 	
 	if(tree->allocatedBuffers) cpArrayFreeEach(tree->allocatedBuffers, cpfree);
 	cpArrayFree(tree->allocatedBuffers);
@@ -710,6 +756,10 @@ static void
 cpBBTreeInsert(cpBBTree *tree, void *obj, cpHashValue hashid)
 {
 	Node *leaf = (Node *)cpHashSetInsert(tree->leaves, hashid, obj, (cpHashSetTransFunc)leafSetTrans, tree);
+#ifdef CP_BBTREE_LEAF_INDEX
+	leaf->ARRAY_INDEX = tree->leafArray->num;
+#endif
+	cpArrayPush(tree->leafArray, leaf);
 	
 	Node *root = tree->root;
 	tree->root = SubtreeInsert(root, leaf, tree);
@@ -723,6 +773,16 @@ static void
 cpBBTreeRemove(cpBBTree *tree, void *obj, cpHashValue hashid)
 {
 	Node *leaf = (Node *)cpHashSetRemove(tree->leaves, hashid, obj);
+#ifdef CP_BBTREE_LEAF_INDEX
+	cpArray *array = tree->leafArray;
+	int index = leaf->ARRAY_INDEX;
+	Node *last = (Node *)array->arr[--array->num];
+	array->arr[index] = last;
+	last->ARRAY_INDEX = index;
+	array->arr[array->num] = NULL;
+#else
+	cpArrayDeleteObj(tree->leafArray, leaf);
+#endif
 	
 	tree->root = SubtreeRemove(tree->root, leaf, tree);
 	PairsClear(leaf, tree);
@@ -737,15 +797,15 @@ cpBBTreeContains(cpBBTree *tree, void *obj, cpHashValue hashid)
 
 //MARK: Reindex
 
-static void LeafUpdateWrap(Node *leaf, cpBBTree *tree) {LeafUpdate(leaf, tree);}
-
 static void
 cpBBTreeReindexQuery(cpBBTree *tree, cpSpatialIndexQueryFunc func, void *data)
 {
 	if(!tree->root) return;
 	
-	// LeafUpdate() may modify tree->root. Don't cache it.
-	cpHashSetEach(tree->leaves, (cpHashSetIteratorFunc)LeafUpdateWrap, tree);
+	// LeafUpdate() may modify tree->root. Iterate the dense leaf array for locality.
+	for(int i=0; i<tree->leafArray->num; i++){
+		LeafUpdate((Node *)tree->leafArray->arr[i], tree);
+	}
 	
 	cpSpatialIndex *staticIndex = tree->spatialIndex.staticIndex;
 	Node *staticRoot = (staticIndex && staticIndex->klass == Klass() ? ((cpBBTree *)staticIndex)->root : NULL);
@@ -779,7 +839,16 @@ static void
 cpBBTreeSegmentQuery(cpBBTree *tree, void *obj, cpVect a, cpVect b, cpFloat t_exit, cpSpatialIndexSegmentQueryFunc func, void *data)
 {
 	Node *root = tree->root;
-	if(root) SubtreeSegmentQuery(root, obj, a, b, t_exit, func, data);
+	if(root) SubtreeSegmentQuery(root, obj, a, b, 0.0f, t_exit, func, data);
+}
+
+cpBool
+cpBBTreeSegmentQueryRadius(cpSpatialIndex *index, void *obj, cpVect a, cpVect b, cpFloat radius, cpFloat t_exit, cpSpatialIndexSegmentQueryFunc func, void *data)
+{
+	cpBBTree *tree = GetTree(index);
+	if(!tree) return cpFalse;
+	if(tree->root) SubtreeSegmentQuery(tree->root, obj, a, b, radius, t_exit, func, data);
+	return cpTrue;
 }
 
 static void
@@ -796,18 +865,13 @@ cpBBTreeCount(cpBBTree *tree)
 	return cpHashSetCount(tree->leaves);
 }
 
-typedef struct eachContext {
-	cpSpatialIndexIteratorFunc func;
-	void *data;
-} eachContext;
-
-static void each_helper(Node *node, eachContext *context){context->func(node->obj, context->data);}
-
 static void
 cpBBTreeEach(cpBBTree *tree, cpSpatialIndexIteratorFunc func, void *data)
 {
-	eachContext context = {func, data};
-	cpHashSetEach(tree->leaves, (cpHashSetIteratorFunc)each_helper, &context);
+	for(int i=0; i<tree->leafArray->num; i++){
+		Node *leaf = (Node *)tree->leafArray->arr[i];
+		func(leaf->obj, data);
+	}
 }
 
 static cpSpatialIndexClass klass = {
@@ -836,12 +900,6 @@ static inline cpSpatialIndexClass *Klass(){return &klass;}
 static int
 cpfcompare(const cpFloat *a, const cpFloat *b){
 	return (*a < *b ? -1 : (*b < *a ? 1 : 0));
-}
-
-static void
-fillNodeArray(Node *node, Node ***cursor){
-	(**cursor) = node;
-	(*cursor)++;
 }
 
 static Node *
@@ -942,9 +1000,7 @@ cpBBTreeOptimize(cpSpatialIndex *index)
 	
 	int count = cpBBTreeCount(tree);
 	Node **nodes = (Node **)cpcalloc(count, sizeof(Node *));
-	Node **cursor = nodes;
-	
-	cpHashSetEach(tree->leaves, (cpHashSetIteratorFunc)fillNodeArray, &cursor);
+	memcpy(nodes, tree->leafArray->arr, sizeof(Node *)*(size_t)count);
 	
 	SubtreeRecycle(tree, root);
 	tree->root = partitionNodes(tree, nodes, count);

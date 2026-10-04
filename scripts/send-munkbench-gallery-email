@@ -1,0 +1,71 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+required=(SMTP_SERVER SMTP_PORT SMTP_USERNAME SMTP_PASSWORD EMAIL_FROM EMAIL_TO GALLERY_DIR)
+for name in "${required[@]}"; do
+  if [[ -z ${!name:-} ]]; then
+    echo "Skipping MunkBench gallery email: $name is not configured."
+    exit 0
+  fi
+done
+
+manifest="$GALLERY_DIR/changed.txt"
+if [[ ! -s $manifest ]]; then
+  echo "MunkBench snapshots are unchanged; no email sent."
+  exit 0
+fi
+
+mapfile -t benchmarks < "$manifest"
+attachments=()
+for benchmark in "${benchmarks[@]}"; do
+  for variant in baseline current; do
+    image="$GALLERY_DIR/${benchmark}-${variant}.png"
+    [[ -f $image ]] || { echo "Missing gallery image: $image" >&2; exit 1; }
+    attachments+=("$image")
+  done
+done
+
+message=$(mktemp)
+trap 'rm -f "$message"' EXIT
+boundary="munkbench-gallery-$(date +%s)-${RANDOM}"
+commit=${COMMIT_SHA:-unknown}
+short_commit=${commit:0:7}
+pr_number=${PR_NUMBER:-unknown}
+subject=${EMAIL_SUBJECT:-[MunkBench gallery] PR #${pr_number} - ${short_commit}}
+
+{
+  printf 'From: Munk2D CI <%s>\r\n' "$EMAIL_FROM"
+  printf 'To: %s\r\n' "$EMAIL_TO"
+  printf 'Subject: %s\r\n' "$subject"
+  printf 'MIME-Version: 1.0\r\n'
+  printf 'Content-Type: multipart/mixed; boundary="%s"\r\n' "$boundary"
+  printf '\r\n--%s\r\n' "$boundary"
+  printf 'Content-Type: text/plain; charset=UTF-8\r\n'
+  printf 'Content-Transfer-Encoding: 8bit\r\n\r\n'
+  printf 'MunkBench visual output changed for %d benchmark(s):\r\n' "${#benchmarks[@]}"
+  for benchmark in "${benchmarks[@]}"; do printf -- '- %s (baseline + current attached)\r\n' "$benchmark"; done
+  printf '\r\nCommit: %s\r\n' "$commit"
+  [[ -z ${PR_URL:-} ]] || printf 'Pull request: %s\r\n' "$PR_URL"
+  [[ -z ${ACTIONS_URL:-} ]] || printf 'GitHub Actions: %s\r\n' "$ACTIONS_URL"
+  printf '\r\nThe full SVG gallery remains available in the GitHub artifact.\r\n'
+
+  for attachment in "${attachments[@]}"; do
+    filename=${attachment##*/}
+    printf '\r\n--%s\r\n' "$boundary"
+    printf 'Content-Type: image/png; name="%s"\r\n' "$filename"
+    printf 'Content-Disposition: attachment; filename="%s"\r\n' "$filename"
+    printf 'Content-Transfer-Encoding: base64\r\n\r\n'
+    base64 -w 76 "$attachment" | sed 's/$/\r/'
+  done
+  printf '\r\n--%s--\r\n' "$boundary"
+} > "$message"
+
+curl --fail-with-body --silent --show-error \
+  --url "smtp://${SMTP_SERVER}:${SMTP_PORT}" \
+  --ssl-reqd \
+  --user "${SMTP_USERNAME}:${SMTP_PASSWORD}" \
+  --mail-from "$EMAIL_FROM" \
+  --mail-rcpt "$EMAIL_TO" \
+  --upload-file "$message"
+
+echo "Sent MunkBench gallery email to $EMAIL_TO with ${#attachments[@]} attachments."

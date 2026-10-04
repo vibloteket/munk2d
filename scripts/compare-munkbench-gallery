@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+current=${1:?Usage: compare-munkbench-gallery CURRENT_DIR BASELINE_DIR OUTPUT_DIR}
+baseline=${2:?Usage: compare-munkbench-gallery CURRENT_DIR BASELINE_DIR OUTPUT_DIR}
+output=${3:?Usage: compare-munkbench-gallery CURRENT_DIR BASELINE_DIR OUTPUT_DIR}
+mkdir -p "$output"
+: > "$output/changed.txt"
+
+for current_svg in "$current"/*_smoke.svg; do
+  [[ -f $current_svg ]] || continue
+  filename=${current_svg##*/}
+  benchmark=${filename%_smoke.svg}
+  baseline_svg="$baseline/$filename"
+  [[ -f $baseline_svg ]] || { echo "Missing baseline SVG: $baseline_svg" >&2; exit 1; }
+
+  baseline_png=$(mktemp --suffix=.png)
+  current_png=$(mktemp --suffix=.png)
+  rsvg-convert -w 1000 "$baseline_svg" -o "$baseline_png"
+  rsvg-convert -w 1000 "$current_svg" -o "$current_png"
+  if cmp -s "$baseline_png" "$current_png"; then
+    rm -f "$baseline_png" "$current_png"
+    continue
+  fi
+
+  printf '%s\n' "$benchmark" >> "$output/changed.txt"
+  mv "$baseline_png" "$output/${benchmark}-baseline.png"
+  mv "$current_png" "$output/${benchmark}-current.png"
+done
+
+changed=$(wc -l < "$output/changed.txt")
+echo "Changed MunkBench snapshots: $changed"

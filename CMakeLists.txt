@@ -2,6 +2,12 @@ cmake_minimum_required(VERSION 3.10)
 
 project(chipmunk)
 
+# Munk2D 2.1.0
+set(MUNK2D_VERSION_MAJOR 2)
+set(MUNK2D_VERSION_MINOR 1)
+set(MUNK2D_VERSION_PATCH 0)
+set(MUNK2D_VERSION "${MUNK2D_VERSION_MAJOR}.${MUNK2D_VERSION_MINOR}.${MUNK2D_VERSION_PATCH}")
+
 # to change the prefix, run cmake with the parameter:
 #   -D CMAKE_INSTALL_PREFIX=/my/prefix
 
@@ -63,14 +69,34 @@ if(NOT MSVC)
   if(FORCE_CLANG_BLOCKS)
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fblocks")
   endif()
-  set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -ffast-math") # extend release-profile with fast-math
   set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -Wall") # extend debug-profile with -Wall
 endif()
+
+option(MUNK2D_ENABLE_LTO "Enable supported interprocedural/link-time optimization in non-Debug builds" ON)
+if(MUNK2D_ENABLE_LTO)
+  include(CheckIPOSupported)
+  check_ipo_supported(RESULT MUNK2D_IPO_SUPPORTED OUTPUT MUNK2D_IPO_ERROR LANGUAGES C CXX)
+  if(MUNK2D_IPO_SUPPORTED)
+    set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE ON)
+    set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELWITHDEBINFO ON)
+    set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_MINSIZEREL ON)
+  else()
+    message(WARNING "MUNK2D_ENABLE_LTO requested, but IPO/LTO is unavailable: ${MUNK2D_IPO_ERROR}")
+  endif()
+endif()
+
+option(MUNK2D_ENABLE_AVX2_CONTACT_SOLVER "Build the optional runtime-guarded x86-64 AVX2 contact solver" ON)
 
 add_subdirectory(src)
 
 if(BUILD_TESTING)
   add_subdirectory(tests)
+endif()
+
+option(BUILD_BENCHMARKS "Build standalone benchmark executables" OFF)
+
+if(BUILD_BENCHMARKS)
+  add_subdirectory(benchmarks)
 endif()
 
 if(BUILD_DEMOS)

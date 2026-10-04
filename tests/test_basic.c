@@ -94,6 +94,67 @@ test_cpbbsegmentquery(void)
 }
 
 static void
+test_kinematic_collision_velocity(void)
+{
+  cpSpace *space = cpSpaceNew();
+  cpSpaceSetGravity(space, cpvzero);
+
+  cpBody *kinematic = cpBodyNewKinematic();
+  cpBodySetVelocity(kinematic, cpv(5.0, 0.0));
+  cpBodySetPosition(kinematic, cpv(-1.0, 0.0));
+  cpShape *kinematic_shape = cpCircleShapeNew(kinematic, 1.0, cpvzero);
+  cpSpaceAddBody(space, kinematic);
+  cpSpaceAddShape(space, kinematic_shape);
+
+  cpBody *dynamic = cpBodyNew(1.0, cpMomentForCircle(1.0, 0.0, 1.0, cpvzero));
+  cpBodySetPosition(dynamic, cpv(1.0, 0.0));
+  cpShape *dynamic_shape = cpCircleShapeNew(dynamic, 1.0, cpvzero);
+  cpSpaceAddBody(space, dynamic);
+  cpSpaceAddShape(space, dynamic_shape);
+
+  cpSpaceStep(space, 1.0/60.0);
+  assert_vect_near(cpBodyGetVelocity(kinematic), cpv(5.0, 0.0), 0.0, "collision impulses do not modify kinematic velocity");
+  assert_true(cpBodyGetVelocity(dynamic).x > 0.0, "kinematic velocity contributes to the dynamic body's collision response");
+
+  cpSpaceFree(space);
+  cpShapeFree(kinematic_shape);
+  cpShapeFree(dynamic_shape);
+  cpBodyFree(kinematic);
+  cpBodyFree(dynamic);
+}
+
+static void
+test_finite_constraint_force_limits(void)
+{
+  cpSpace *space = cpSpaceNew();
+  cpSpaceSetGravity(space, cpvzero);
+
+  cpBody *a = cpSpaceAddBody(space, cpBodyNew(1.0, 1.0));
+  cpBody *b = cpSpaceAddBody(space, cpBodyNew(1.0, 1.0));
+  cpBodySetPosition(b, cpv(2.0, 1.0));
+
+  cpConstraint *pivot = cpSpaceAddConstraint(space, cpPivotJointNew2(a, b, cpvzero, cpvzero));
+  cpConstraintSetMaxForce(pivot, 0.25);
+  cpConstraint *groove = cpSpaceAddConstraint(space, cpGrooveJointNew(a, b, cpv(-1.0, 0.0), cpv(1.0, 0.0), cpvzero));
+  cpConstraintSetMaxForce(groove, 0.5);
+
+  cpFloat dt = 1.0/60.0;
+  cpSpaceStep(space, dt);
+  assert_true(cpConstraintGetImpulse(pivot) <= 0.25*dt + 1e-12, "pivot joint honors finite max force");
+  assert_true(cpConstraintGetImpulse(groove) <= 0.5*dt + 1e-12, "groove joint honors finite max force");
+
+  cpSpaceRemoveConstraint(space, pivot);
+  cpSpaceRemoveConstraint(space, groove);
+  cpSpaceRemoveBody(space, a);
+  cpSpaceRemoveBody(space, b);
+  cpConstraintFree(pivot);
+  cpConstraintFree(groove);
+  cpBodyFree(a);
+  cpBodyFree(b);
+  cpSpaceFree(space);
+}
+
+static void
 test_core_library_functions(void)
 {
   assert_true(cpVersionString != NULL, "cpVersionString is exposed");
@@ -118,6 +179,8 @@ main(void)
 {
   test_cpvslerp();
   test_cpbbsegmentquery();
+  test_kinematic_collision_velocity();
+  test_finite_constraint_force_limits();
   test_core_library_functions();
 
   if(failures != 0) {

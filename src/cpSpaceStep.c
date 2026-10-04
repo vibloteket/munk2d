@@ -21,6 +21,7 @@
 */
 
 #include "chipmunk/chipmunk_private.h"
+#include "cpContactSolver.h"
 
 //MARK: Post Step Callback Functions
 
@@ -203,17 +204,43 @@ cpSpaceArbiterSetTrans(cpShape **shapes, cpSpace *space)
 }
 
 static inline cpBool
+ConstraintBlocksBody(cpConstraint *constraint, cpBody *other)
+{
+	// The traversed list already establishes one endpoint. QueryReject has
+	// also excluded pairs belonging to the same body.
+	return !constraint->collideBodies && (constraint->a == other || constraint->b == other);
+}
+
+static inline cpBool
 QueryRejectConstraint(cpBody *a, cpBody *b)
 {
-	CP_BODY_FOREACH_CONSTRAINT(a, constraint){
-		if(
-			!constraint->collideBodies && (
-				(constraint->a == a && constraint->b == b) ||
-				(constraint->a == b && constraint->b == a)
-			)
-		) return cpTrue;
+	cpConstraint *ca = a->constraintList;
+	if(!ca) return cpFalse;
+	cpConstraint *cb = b->constraintList;
+	if(!cb) return cpFalse;
+	// Finish short A lists before probing B, avoiding duplicate work for
+	// the common low-degree case. A blocker must belong to both lists.
+	for(int i=0; i<4 && ca; i++){
+		if(!ca->collideBodies && (
+			(ca->a == a && ca->b == b) ||
+			(ca->a == b && ca->b == a)
+		)) return cpTrue;
+		ca = cpConstraintNext(ca, a);
 	}
-	
+	if(!ca) return cpFalse;
+	for(int i=0; i<4 && cb; i++){
+		if(ConstraintBlocksBody(cb, a)) return cpTrue;
+		cb = cpConstraintNext(cb, b);
+	}
+	if(!cb) return cpFalse;
+	// Keep the original long-scan predicate: its a-side test can also serve
+	// the next_a/next_b selection, avoiding an extra test for every node.
+	for(; ca; ca = cpConstraintNext(ca, a)){
+		if(!ca->collideBodies && (
+			(ca->a == a && ca->b == b) ||
+			(ca->a == b && ca->b == a)
+		)) return cpTrue;
+	}
 	return cpFalse;
 }
 
@@ -254,29 +281,24 @@ cpSpaceCollideShapes(cpShape *a, cpShape *b, cpCollisionID id, cpSpace *space)
 	
 	const cpCollisionHandler *handlers [] = { arb->handlerAB, arb->handlerBA, arb->handlerA, arb->handlerB, &space->globalHandler};
 
-	// Call the begin function first if it's the first step
+	// Call only handlers that differ from the default no-op callbacks.
 	if(arb->state == CP_ARBITER_STATE_FIRST_COLLISION) {
 		for (int i=0; i<5; i++) {
-			if (i%2 == 0) {
-				handlers[i]->beginFunc(arb, space, handlers[i]->userData);	
-			}
-			else {
-				arb->swapped = !arb->swapped;
-				handlers[i]->beginFunc(arb, space, handlers[i]->userData);	
-				arb->swapped = !arb->swapped;
+			cpCollisionBeginFunc begin = handlers[i]->beginFunc;
+			if(begin != cpCollisionHandlerDoNothing.beginFunc){
+				if(i%2 != 0) arb->swapped = !arb->swapped;
+				begin(arb, space, handlers[i]->userData);
+				if(i%2 != 0) arb->swapped = !arb->swapped;
 			}
 		}
 	}
 
-	// Call the preSolve function
 	for (int i=0; i<5; i++){
-		if (i%2 == 0) {
-			handlers[i]->preSolveFunc(arb, space, handlers[i]->userData);	
-		}
-		else {
-			arb->swapped = !arb->swapped;
-			handlers[i]->preSolveFunc(arb, space, handlers[i]->userData);	
-			arb->swapped = !arb->swapped;
+		cpCollisionPreSolveFunc preSolve = handlers[i]->preSolveFunc;
+		if(preSolve != cpCollisionHandlerDoNothing.preSolveFunc){
+			if(i%2 != 0) arb->swapped = !arb->swapped;
+			preSolve(arb, space, handlers[i]->userData);
+			if(i%2 != 0) arb->swapped = !arb->swapped;
 		}
 	}
 	if(
@@ -387,6 +409,7 @@ cpSpaceStep(cpSpace *space, cpFloat dt)
 	}
 	arbiters->num = 0;
 
+	int arbiterCountBeforeUnlock;
 	cpSpaceLock(space); {
 		// Integrate positions
 		for(int i=0; i<bodies->num; i++){
@@ -398,7 +421,15 @@ cpSpaceStep(cpSpace *space, cpFloat dt)
 		cpSpacePushFreshContactBuffer(space);
 		cpSpatialIndexEach(space->dynamicShapes, (cpSpatialIndexIteratorFunc)cpShapeUpdateFunc, NULL);
 		cpSpatialIndexReindexQuery(space->dynamicShapes, (cpSpatialIndexQueryFunc)cpSpaceCollideShapes, space);
+		arbiterCountBeforeUnlock = arbiters->num;
 	} cpSpaceUnlock(space, cpFalse);
+
+	// Callback wake-ups can restore sleeping arbiters during unlock. Their
+	// saved graph links must be removed before ProcessComponents rethreads them.
+	// Other unlock sites keep those links because no graph rebuild follows.
+	for(int i=arbiterCountBeforeUnlock; i<arbiters->num; i++){
+		cpArbiterUnthread((cpArbiter *)arbiters->arr[i]);
+	}
 	
 	// Rebuild the contact graph (and detect sleeping components if sleeping is enabled)
 	cpSpaceProcessComponents(space, dt);
@@ -442,7 +473,11 @@ cpSpaceStep(cpSpace *space, cpFloat dt)
 			constraint->klass->applyCachedImpulse(constraint, dt_coef);
 		}
 		
-		// Run the impulse solver.
+		// The original loop remains the default and all-or-nothing fallback.
+#if CP_AVX2_CONTACT_SOLVER && CP_USE_DOUBLES
+		cpContactSolverContext *contactSolver = cpContactSolverGet(space);
+		if(!(contactSolver && cpContactSolverStep(space, contactSolver)))
+#endif
 		for(int i=0; i<space->iterations; i++){
 			for(int j=0; j<arbiters->num; j++){
 				cpArbiterApplyImpulse((cpArbiter *)arbiters->arr[j]);
@@ -466,14 +501,12 @@ cpSpaceStep(cpSpace *space, cpFloat dt)
 		for(int i=0; i<arbiters->num; i++){
 			cpArbiter *arb = (cpArbiter *) arbiters->arr[i];
 			const cpCollisionHandler *handlers [] = { arb->handlerAB, arb->handlerBA, arb->handlerA, arb->handlerB, &space->globalHandler};
-			for (int i=0; i<5; i++){
-				if (i%2 == 0) {
-					handlers[i]->postSolveFunc(arb, space, handlers[i]->userData);	
-				}
-				else {
-					arb->swapped = !arb->swapped;
-					handlers[i]->postSolveFunc(arb, space, handlers[i]->userData);	
-					arb->swapped = !arb->swapped;
+			for (int j=0; j<5; j++){
+				cpCollisionPostSolveFunc postSolve = handlers[j]->postSolveFunc;
+				if(postSolve != cpCollisionHandlerDoNothing.postSolveFunc){
+					if(j%2 != 0) arb->swapped = !arb->swapped;
+					postSolve(arb, space, handlers[j]->userData);
+					if(j%2 != 0) arb->swapped = !arb->swapped;
 				}
 			}
 		}

@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" ToolsVersion="14.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
     <ProjectConfiguration Include="Debug DLL|x64">
@@ -109,6 +109,10 @@
     <ClCompile Include="..\..\..\src\cpSpaceHash.c" />
     <ClCompile Include="..\..\..\src\cpSpaceQuery.c" />
     <ClCompile Include="..\..\..\src\cpSpaceStep.c" />
+    <ClCompile Include="..\..\..\src\cpContactSolver.c" />
+    <ClCompile Include="..\..\..\src\cpContactSolverCpu.c" />
+    <ClCompile Include="..\..\..\src\cpContactSolverScalar.c" />
+    <ClCompile Include="..\..\..\src\cpContactSolverAvx2.c" />
     <ClCompile Include="..\..\..\src\cpSpatialIndex.c" />
     <ClCompile Include="..\..\..\src\cpSweep1D.c" />
   </ItemGroup>

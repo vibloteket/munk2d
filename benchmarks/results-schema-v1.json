@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vibloteket.github.io/munk2d/benchmarks/results-schema-v1.json",
+  "title": "MunkBench recorded run",
+  "type": "object",
+  "required": ["schema_version", "run_id", "timestamp", "revision", "harness", "environment", "configuration", "validation", "benchmarks"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "run_id": { "type": "string", "minLength": 1 },
+    "timestamp": { "type": "string", "format": "date-time" },
+    "revision": {
+      "type": "object",
+      "required": ["commit", "source_date", "tags"],
+      "properties": {
+        "commit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "source_date": { "type": "string", "format": "date-time" },
+        "tags": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "harness": {
+      "type": "object",
+      "required": ["protocol", "commit"],
+      "properties": {
+        "protocol": { "type": "string", "minLength": 1 },
+        "commit": { "type": "string", "pattern": "^[0-9a-f]{40}$" }
+      }
+    },
+    "environment": {
+      "type": "object",
+      "required": ["id", "hostname", "cpu_model", "compiler", "cmake", "platform"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z0-9._-]+$" },
+        "hostname": { "type": "string" },
+        "cpu_model": { "type": "string" },
+        "cpu_quota": { "type": ["string", "null"] },
+        "compiler": { "type": "string" },
+        "cmake": { "type": "string" },
+        "platform": { "type": "string" },
+        "load_average_start": { "type": "array", "items": { "type": "number" } }
+      }
+    },
+    "configuration": {
+      "type": "object",
+      "required": ["build_type", "extra_c_flags", "warmup", "samples", "batch", "cpu_affinity"],
+      "properties": {
+        "build_type": { "type": "string" },
+        "extra_c_flags": { "type": "array", "items": { "type": "string" } },
+        "warmup": { "type": "integer", "minimum": 0 },
+        "samples": { "type": "integer", "minimum": 1 },
+        "batch": { "type": ["integer", "string"] },
+        "cpu_affinity": { "type": ["string", "null"] }
+      }
+    },
+    "validation": {
+      "type": "object",
+      "required": ["passed", "checkpoints"],
+      "properties": {
+        "passed": { "const": true },
+        "checkpoints": { "type": "string" }
+      }
+    },
+    "benchmarks": {
+      "type": "array",
+      "minItems": 13,
+      "maxItems": 13,
+      "items": {
+        "type": "object",
+        "required": ["name", "size", "batch", "samples", "summary"],
+        "properties": {
+          "name": { "type": "string" },
+          "size": { "type": "integer" },
+          "batch": { "type": "integer", "minimum": 1 },
+          "samples": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "required": ["sample", "init_time_s", "run_time_s"],
+              "properties": {
+                "sample": { "type": "integer", "minimum": 1 },
+                "init_time_s": { "type": "number", "minimum": 0 },
+                "run_time_s": { "type": "number", "exclusiveMinimum": 0 }
+              }
+            }
+          },
+          "summary": {
+            "type": "object",
+            "required": ["median_run_time_s", "p05_run_time_s", "p95_run_time_s", "median_init_time_s"],
+            "additionalProperties": { "type": "number" }
+          }
+        }
+      }
+    }
+  }
+}

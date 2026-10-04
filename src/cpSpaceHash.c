@@ -20,6 +20,7 @@
  * SOFTWARE.
 */
 
+#include <limits.h>
 #include "chipmunk/chipmunk_private.h"
 #include "prime.h"
 
@@ -372,6 +373,20 @@ query_helper(cpSpaceHash *hash, cpSpaceHashBin **bin_ptr, void *obj, cpSpatialIn
 			goto restart; // GCC not smart enough/able to tail call an inlined function.
 		}
 	}
+}
+
+cpBool
+cpSpaceHashQueryUseEach(cpSpatialIndex *index, cpBB bb)
+{
+	if(index->klass != Klass()) return cpFalse;
+	cpSpaceHash *hash = (cpSpaceHash *)index;
+	// Match the BB query's cell coordinates, but check before converting to int.
+	cpFloat l = cpffloor(bb.l/hash->celldim), r = cpffloor(bb.r/hash->celldim);
+	cpFloat b = cpffloor(bb.b/hash->celldim), t = cpffloor(bb.t/hash->celldim);
+	if(!(l >= INT_MIN && r < INT_MAX && b >= INT_MIN && t < INT_MAX)) return cpTrue;
+	// Bound the work of a wide sweep by the number of indexed objects instead
+	// of potentially walking a huge, mostly empty rectangle of hash cells.
+	return (r - l + 1.0f)*(t - b + 1.0f) > cpHashSetCount(hash->handleSet);
 }
 
 static void

@@ -63,11 +63,13 @@ applyImpulse(cpPivotJoint *joint, cpFloat dt)
 	// compute normal impulse
 	cpVect j = cpMat2x2Transform(joint->k, cpvsub(joint->bias, vr));
 	cpVect jOld = joint->jAcc;
-	joint->jAcc = cpvclamp(cpvadd(joint->jAcc, j), joint->constraint.maxForce*dt);
+	cpVect jAcc = cpvadd(jOld, j);
+	cpFloat maxForce = joint->constraint.maxForce;
+	joint->jAcc = (maxForce == INFINITY ? jAcc : cpvclamp(jAcc, maxForce*dt));
 	j = cpvsub(joint->jAcc, jOld);
 	
 	// apply impulse
-	apply_impulses(a, b, joint->r1, joint->r2, j);
+	apply_impulses(a, b, r1, r2, j);
 }
 
 static cpFloat

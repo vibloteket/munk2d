@@ -63,10 +63,10 @@ cpCollisionInfoPushContact(struct cpCollisionInfo *info, cpVect p1, cpVect p2, c
 static inline int
 PolySupportPointIndex(const int count, const struct cpSplittingPlane *planes, const cpVect n)
 {
-	cpFloat max = -INFINITY;
+	cpFloat max = cpvdot(planes[0].v0, n);
 	int index = 0;
 	
-	for(int i=0; i<count; i++){
+	for(int i=1; i<count; i++){
 		cpVect v = planes[i].v0;
 		cpFloat d = cpvdot(v, n);
 		if(d > max){
@@ -92,6 +92,9 @@ SupportPointNew(cpVect p, cpCollisionID index)
 }
 
 typedef struct SupportPoint (*SupportPointFunc)(const cpShape *shape, const cpVect n);
+struct SupportContext;
+typedef struct MinkowskiPoint (*SupportPairFunc)(const struct SupportContext *ctx, const cpVect n);
+typedef struct MinkowskiPoint (*CachedPairFunc)(const struct SupportContext *ctx, int index1, int index2);
 
 static inline struct SupportPoint
 CircleSupportPoint(const cpCircleShape *circle, const cpVect n)
@@ -136,16 +139,53 @@ MinkowskiPointNew(const struct SupportPoint a, const struct SupportPoint b)
 
 struct SupportContext {
 	const cpShape *shape1, *shape2;
-	SupportPointFunc func1, func2;
+	SupportPairFunc pair;
+	CachedPairFunc cached;
 };
+
+static struct MinkowskiPoint SupportSegmentSegment(const struct SupportContext *ctx, const cpVect n)
+{return MinkowskiPointNew(SegmentSupportPoint((const cpSegmentShape *)ctx->shape1, cpvneg(n)), SegmentSupportPoint((const cpSegmentShape *)ctx->shape2, n));}
+static struct MinkowskiPoint SupportPolyPoly(const struct SupportContext *ctx, const cpVect n)
+{return MinkowskiPointNew(PolySupportPoint((const cpPolyShape *)ctx->shape1, cpvneg(n)), PolySupportPoint((const cpPolyShape *)ctx->shape2, n));}
+static struct MinkowskiPoint SupportSegmentPoly(const struct SupportContext *ctx, const cpVect n)
+{return MinkowskiPointNew(SegmentSupportPoint((const cpSegmentShape *)ctx->shape1, cpvneg(n)), PolySupportPoint((const cpPolyShape *)ctx->shape2, n));}
+static struct MinkowskiPoint SupportCirclePoly(const struct SupportContext *ctx, const cpVect n)
+{return MinkowskiPointNew(CircleSupportPoint((const cpCircleShape *)ctx->shape1, cpvneg(n)), PolySupportPoint((const cpPolyShape *)ctx->shape2, n));}
+
+static struct MinkowskiPoint CachedSegmentSegment(const struct SupportContext *ctx, int index1, int index2)
+{
+	const cpSegmentShape *a = (const cpSegmentShape *)ctx->shape1;
+	const cpSegmentShape *b = (const cpSegmentShape *)ctx->shape2;
+	return MinkowskiPointNew(SupportPointNew(index1 == 0 ? a->ta : a->tb, index1), SupportPointNew(index2 == 0 ? b->ta : b->tb, index2));
+}
+static struct MinkowskiPoint CachedPolyPoly(const struct SupportContext *ctx, int index1, int index2)
+{
+	const cpPolyShape *a = (const cpPolyShape *)ctx->shape1;
+	const cpPolyShape *b = (const cpPolyShape *)ctx->shape2;
+	if(index1 >= a->count) index1 = 0;
+	if(index2 >= b->count) index2 = 0;
+	return MinkowskiPointNew(SupportPointNew(a->planes[index1].v0, index1), SupportPointNew(b->planes[index2].v0, index2));
+}
+static struct MinkowskiPoint CachedSegmentPoly(const struct SupportContext *ctx, int index1, int index2)
+{
+	const cpSegmentShape *a = (const cpSegmentShape *)ctx->shape1;
+	const cpPolyShape *b = (const cpPolyShape *)ctx->shape2;
+	if(index2 >= b->count) index2 = 0;
+	return MinkowskiPointNew(SupportPointNew(index1 == 0 ? a->ta : a->tb, index1), SupportPointNew(b->planes[index2].v0, index2));
+}
+static struct MinkowskiPoint CachedCirclePoly(const struct SupportContext *ctx, int index1, int index2)
+{
+	const cpCircleShape *a = (const cpCircleShape *)ctx->shape1;
+	const cpPolyShape *b = (const cpPolyShape *)ctx->shape2;
+	if(index2 >= b->count) index2 = 0;
+	return MinkowskiPointNew(SupportPointNew(a->tc, index1), SupportPointNew(b->planes[index2].v0, index2));
+}
 
 // Calculate the maximal point on the minkowski difference of two shapes along a particular axis.
 static inline struct MinkowskiPoint
 Support(const struct SupportContext *ctx, const cpVect n)
 {
-	struct SupportPoint a = ctx->func1(ctx->shape1, cpvneg(n));
-	struct SupportPoint b = ctx->func2(ctx->shape2, n);
-	return MinkowskiPointNew(a, b);
+	return ctx->pair(ctx, n);
 }
 
 struct EdgePoint {
@@ -459,8 +499,8 @@ GJK(const struct SupportContext *ctx, cpCollisionID *id)
 	struct MinkowskiPoint v0, v1;
 	if(*id){
 		// Use the minkowski points from the last frame as a starting point using the cached indexes.
-		v0 = MinkowskiPointNew(ShapePoint(ctx->shape1, (*id>>24)&0xFF), ShapePoint(ctx->shape2, (*id>>16)&0xFF));
-		v1 = MinkowskiPointNew(ShapePoint(ctx->shape1, (*id>> 8)&0xFF), ShapePoint(ctx->shape2, (*id    )&0xFF));
+		v0 = ctx->cached(ctx, (*id>>24)&0xFF, (*id>>16)&0xFF);
+		v1 = ctx->cached(ctx, (*id>> 8)&0xFF, (*id    )&0xFF);
 	} else {
 		// No cached indexes, use the shapes' bounding box centers as a guess for a starting axis.
 		cpVect axis = cpvperp(cpvsub(cpBBCenter(ctx->shape1->bb), cpBBCenter(ctx->shape2->bb)));
@@ -573,7 +613,7 @@ CircleToSegment(const cpCircleShape *circle, const cpSegmentShape *segment, stru
 static void
 SegmentToSegment(const cpSegmentShape *seg1, const cpSegmentShape *seg2, struct cpCollisionInfo *info)
 {
-	struct SupportContext context = {(cpShape *)seg1, (cpShape *)seg2, (SupportPointFunc)SegmentSupportPoint, (SupportPointFunc)SegmentSupportPoint};
+	struct SupportContext context = {(cpShape *)seg1, (cpShape *)seg2, SupportSegmentSegment, CachedSegmentSegment};
 	struct ClosestPoints points = GJK(&context, &info->id);
 	
 #if DRAW_CLOSEST
@@ -608,7 +648,7 @@ SegmentToSegment(const cpSegmentShape *seg1, const cpSegmentShape *seg2, struct 
 static void
 PolyToPoly(const cpPolyShape *poly1, const cpPolyShape *poly2, struct cpCollisionInfo *info)
 {
-	struct SupportContext context = {(cpShape *)poly1, (cpShape *)poly2, (SupportPointFunc)PolySupportPoint, (SupportPointFunc)PolySupportPoint};
+	struct SupportContext context = {(cpShape *)poly1, (cpShape *)poly2, SupportPolyPoly, CachedPolyPoly};
 	struct ClosestPoints points = GJK(&context, &info->id);
 	
 #if DRAW_CLOSEST
@@ -631,7 +671,7 @@ PolyToPoly(const cpPolyShape *poly1, const cpPolyShape *poly2, struct cpCollisio
 static void
 SegmentToPoly(const cpSegmentShape *seg, const cpPolyShape *poly, struct cpCollisionInfo *info)
 {
-	struct SupportContext context = {(cpShape *)seg, (cpShape *)poly, (SupportPointFunc)SegmentSupportPoint, (SupportPointFunc)PolySupportPoint};
+	struct SupportContext context = {(cpShape *)seg, (cpShape *)poly, SupportSegmentPoly, CachedSegmentPoly};
 	struct ClosestPoints points = GJK(&context, &info->id);
 	
 #if DRAW_CLOSEST
@@ -663,7 +703,7 @@ SegmentToPoly(const cpSegmentShape *seg, const cpPolyShape *poly, struct cpColli
 static void
 CircleToPoly(const cpCircleShape *circle, const cpPolyShape *poly, struct cpCollisionInfo *info)
 {
-	struct SupportContext context = {(cpShape *)circle, (cpShape *)poly, (SupportPointFunc)CircleSupportPoint, (SupportPointFunc)PolySupportPoint};
+	struct SupportContext context = {(cpShape *)circle, (cpShape *)poly, SupportCirclePoly, CachedCirclePoly};
 	struct ClosestPoints points = GJK(&context, &info->id);
 	
 #if DRAW_CLOSEST
@@ -711,7 +751,15 @@ cpCollide(const cpShape *a, const cpShape *b, cpCollisionID id, struct cpContact
 		info.b = a;
 	}
 	
-	CollisionFuncs[info.a->klass->type + info.b->klass->type*CP_NUM_SHAPES](info.a, info.b, &info);
+	switch(info.a->klass->type + info.b->klass->type*CP_NUM_SHAPES){
+		case 0: CircleToCircle((const cpCircleShape *)info.a, (const cpCircleShape *)info.b, &info); break;
+		case 3: CircleToSegment((const cpCircleShape *)info.a, (const cpSegmentShape *)info.b, &info); break;
+		case 4: SegmentToSegment((const cpSegmentShape *)info.a, (const cpSegmentShape *)info.b, &info); break;
+		case 6: CircleToPoly((const cpCircleShape *)info.a, (const cpPolyShape *)info.b, &info); break;
+		case 7: SegmentToPoly((const cpSegmentShape *)info.a, (const cpPolyShape *)info.b, &info); break;
+		case 8: PolyToPoly((const cpPolyShape *)info.a, (const cpPolyShape *)info.b, &info); break;
+		default: CollisionError(info.a, info.b, &info); break;
+	}
 	
 //	if(0){
 //		for(int i=0; i<info.count; i++){

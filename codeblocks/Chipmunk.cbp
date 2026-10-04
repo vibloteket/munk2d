@@ -141,6 +141,18 @@
 		<Unit filename="../src/cpSpaceStep.c">
 			<Option compilerVar="CC" />
 		</Unit>
+		<Unit filename="../src/cpContactSolver.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../src/cpContactSolverCpu.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../src/cpContactSolverScalar.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../src/cpContactSolverAvx2.c">
+			<Option compilerVar="CC" />
+		</Unit>
 		<Unit filename="../src/cpSpatialIndex.c">
 			<Option compilerVar="CC" />
 		</Unit>
