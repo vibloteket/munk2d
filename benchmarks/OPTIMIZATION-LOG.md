@@ -9,7 +9,21 @@ this file before repeating an experiment. Reducing solver iterations, collision
 accuracy, convergence, or numeric precision is not treated as an optimization; such
 quality/performance tradeoffs require explicit approval before implementation.
 
-Latest investigation: [owner pruning and circle updates](#owner-pruning-and-circle-update-factorial-screen-2026-11-18)
+Latest investigation: [lazy owner-metadata activation](#lazy-owner-metadata-activation-2026-11-19)
+defers recomputation until the first eligible query, then allocation-free postorder
+rebuilds both linked roots. Screen passes but independent confirmation fails; no production recommendation.
+Production/defaults remain unchanged.
+
+Previous investigation: [owner-query fast-path refinement](#owner-query-fast-path-refinement-2026-11-19)
+separates owner/no-owner traversal and safely caches per-leaf eligibility. Screen passes but independent confirmation fails; no production recommendation.
+Production engine/defaults remain unchanged.
+
+Previous investigation: [owner-maintenance convergence](#owner-maintenance-convergence-screen-2026-11-19)
+tests production, the previous owner-pruning prototype and convergent metadata maintenance
+on the S22. The frozen screen fails the general-use gate; no production engine change.
+The body-centric update alternative is recorded separately in [issue #32](https://github.com/vibloteket/munk2d/issues/32).
+
+Previous investigation: [owner pruning and circle updates](#owner-pruning-and-circle-update-factorial-screen-2026-11-18)
 tests current/A/B/A+B on the S22. Circle updates partly offset SlowExplosion's
 owner-pruning cost, but Diagonal/SlowExplosion still regress consistently;
 the frozen combination is rejected. The prior
@@ -1065,3 +1079,306 @@ consumer implications still require qualification.
 Workspaceevidence:exports/munk2d-owner-circle-combo/{REPORT.md,PLAN.md,
 REPRODUCE.md,candidate.patch},allfourwayrawdata/tests/source/binaryhashes.
 Download:munk2d-owner-circle-combo-evidence.tar.gz(workspaceartifact).
+
+
+## Owner-maintenance convergence screen (2026-11-19)
+
+**Rejected as a general optimization under the frozen gate.** Base dce736c (engine2006f7b). R is production; A is the prior
+homogeneous-owner shape-tree pruning prototype; C is A with incremental owner maintenance.
+All experimental options remain OFF by default; no production engine/default/Pymunk change.
+No circle/stack combination, PGO, threading, precision or iteration change.
+
+C performs the complete required ancestor bounds walk, then propagates owner metadata
+from the first affected parent only until its cached owner stops changing. The previous
+value is saved before recomputation; bounding-box updates never stop at owner convergence.
+New/rebuilt nodes initialize owner metadata. No additional persistent storage or allocation;
+Node72/Pair56 retained.
+
+Three paired blocks on S22 CPU4/mask10, NDKr27d arm64/API28 O3gLTO, baseline and actual packet NEON;
+26 reference main scenes plus 9 supplements. R1/A/C/R2 ordering balanced/reversed, candidate
+paired with sqrt(R1*R2), one warmup/sample/batch. All 840 timing rows and
+48 thermal-status-0 prechecks retained. Negative is faster.
+
+| Contrast, main step | Baseline geometric | NEON geometric | Baseline summed | NEON summed |
+|---|---:|---:|---:|---:|
+| A/R | -0.74% | -1.24% | -5.63% | -6.37% |
+| C/R | -1.66% | -1.76% | -6.59% | -7.08% |
+| C/A | -1.05% | -0.59% | -1.02% | -0.77% |
+| AA | 0.23% | -0.00% | 0.17% | -0.21% |
+
+Each contrast has its own median three-block paired ratios; do not multiply published
+medians. AA is repeated production. Dedicated Android still has background activity
+and frequency variation; thermal status 0 does not mean fixed clocks.
+
+| Scene | C/R baseline | C/R NEON | C/A baseline | C/A NEON |
+|---|---:|---:|---:|---:|
+| Multifixture | -45.54% | -45.38% | -2.40% | -3.36% |
+| Compact64 | -34.43% | -33.57% | -0.54% | -0.15% |
+| Diagonal | 3.50% | 2.71% | -3.83% | -3.15% |
+| SlowExplosion | 3.97% | 4.49% | -2.53% | -2.37% |
+| AddPair | 0.82% | 0.95% | -1.31% | -0.18% |
+| FallingCircles | 2.11% | 2.19% | -0.93% | -0.68% |
+| Sparse64 | 0.20% | 0.48% | -0.68% | 0.07% |
+
+Predeclared gate: BOTH solvers main geometric <=.995, Multifixture <=.70, Compact64 <=.80,
+no main scene >3% in ALL three blocks, no supplemental scene >10% in ALL three, requested
+heap peak <=+5%, and all quality/determinism/invariant tests pass.
+- stock: mainMeanPass=true, multifixturePass=true, compact64Pass=true, mainRegressionPass=false, suppRegressionPass=true, memoryPass=true. Consistent main regressions: SlowExplosion 3.99%/3.97%/3.93%.
+- enabled: mainMeanPass=true, multifixturePass=true, compact64Pass=true, mainRegressionPass=false, suppRegressionPass=true, memoryPass=true. Consistent main regressions: SlowExplosion 4.49%/3.87%/4.75%.
+
+Separate counters: A/C have identical candidate/narrow-phase calls, node visits and
+pruning counts, and instrumented states match ordinary captures. Owner recomputations:
+- Diagonal/stock: 4508988 -> 300125 (93.34% fewer); 0 internal prunes.
+- Diagonal/enabled: 4474179 -> 300035 (93.29% fewer); 0 internal prunes.
+- SlowExplosion/stock: 2248973 -> 265001 (88.22% fewer); 0 internal prunes.
+- SlowExplosion/enabled: 2248973 -> 265001 (88.22% fewer); 0 internal prunes.
+- Multifixture/stock: 11085286 -> 720372 (93.50% fewer); 960858 internal prunes.
+- Multifixture/enabled: 11835530 -> 736410 (93.78% fewer); 971466 internal prunes.
+
+Counts do not prove elapsed-time attribution. All **11x25 CTest suites pass**
+(native R/A/C AVX2, C ASan/UBSan, C uint64 timestamps, six Android R/A/C baseline/NEON).
+Strengthened owner model includes 256 homogeneous/mixed/homogeneous transitions and
+24,576 bound reindexes where owner convergence must not truncate bounds propagation,
+plus original 800 randomized topology/filtered callback-order/ID/fat-pair operations.
+Thirty additional seeded model processes and 90 fresh physical/identity/edge oracle
+processes pass. 3072 main repeat comparisons, 108 supplemental
+rolling-state comparisons, 4608 finite main records pass; 0 main /
+0 supplemental captured trajectories differ from production. This is not formal
+all-state or cross-platform bitwise proof. 210 wrapped-allocation lifecycles balance,
+12 instrumented states match ordinary binaries; worst C requested peak
+0.01% (+32 bytes). Requested bytes are not RSS/libc/stack/allocator overhead.
+
+R engine token streams match production and A matches the previous owner prototype;
+benchmark harness identity, frozen source hashes, full test-log audit, oracle object
+freshness, patch reconstruction and independent gate audit pass. No native performance,
+Wasm or Pymunk qualification is claimed. A passing screen still needs independent
+confirmation; a failed frozen implementation is not rescue-tuned.
+
+Evidence: workspace exports/munk2d-owner-convergence/REPORT.md, PLAN.md, REPRODUCE.md,
+candidate.patch, source snapshots, raw timings/states/telemetry, full CTest/oracle/model
+logs, work/memory counters and gate/audit JSON; companion evidence archive. Body-centric
+shape-cache/update locality remains an **unimplemented** separate hypothesis in issue32.
+
+
+## Owner-query fast-path refinement (2026-11-19)
+
+**Screen passes but independent confirmation fails; no production recommendation.** One newly authorized refinement, not rescue tuning of the old frozen experiment.
+R=production; C=previous owner-pruning+convergence; D=C+split query loops/safe key caching.
+Base dce736c, production engine2006f7b unchanged. New query-fastpath option OFF by default,
+requires owner pruning. No PGO, solver/precision/contact-quality, threading/default/Pymunk changes.
+
+Old compiled C checked owner in its node-pop loop and recalculated eligibility per sibling
+subtree. D plain machine-code loop has no ownership check; outer leaf dispatch chooses
+plain/owned traversal, reusing eligibility only under a pure/stable-for-one-MarkLeaf contract.
+cpSpace opts in because collision marking is locked; generic trees default to per-subtree
+refresh and preserve callback eligibility changes. Private empty-linked-tree configuration
+hint propagates to static/dynamic trees, resets with key reconfiguration, and cannot change
+on nonempty trees. No world eligibility counter, scan, thresholds or scene-specific selection.
+Public queries remain unpruned; Node72/Pair56 unchanged, one constant tree config flag may
+add alignment bytes. Existing convergence/bounds work unchanged.
+
+S22 CPU4/mask10 NDKr27d arm64/API28 O3gLTO, baseline and actual packet NEON. Three balanced
+R1/C/D/R2 blocks, candidate paired with sqrt(R1*R2),26main+9supplemental scenes,840rows,
+48thermal0 batches, one warmup/sample/batch. All outliers retained.
+
+| Main step contrast | Baseline geometric | NEON geometric | Baseline summed | NEON summed |
+|---|---:|---:|---:|---:|
+| C/R | -1.40% | -1.33% | -6.69% | -6.47% |
+| D/R | -1.98% | -1.75% | -7.13% | -7.23% |
+| D/C | -0.60% | -0.54% | -0.47% | -0.81% |
+| AA | -0.40% | -0.01% | -0.27% | 0.14% |
+
+Each contrast uses its own median three-block ratios; do not multiply medians. AA is
+repeated production; subpercent effects need comparison with AA variability.
+
+| Scene, D/R step | Baseline | NEON |
+|---|---:|---:|
+| Multifixture | -46.52% | -46.36% |
+| Compact64 | -33.75% | -33.73% |
+| Diagonal | 0.94% | 1.40% |
+| SlowExplosion | 3.17% | 3.10% |
+| AddPair | 0.43% | 0.81% |
+| FallingCircles | 1.32% | 1.16% |
+| Sparse64 | 1.09% | -1.11% |
+
+Frozen screen gate: BOTHmain geometric<=.995/Multi<=.70/Compact64<=.80/no main>3%ALL3/
+no supplement>10%ALL3/requested-peak<=+5%/allquality. No postmeasurement tuning or exclusions.
+- stock: mainMeanPass=true, multifixturePass=true, compact64Pass=true, mainRegressionPass=true, suppRegressionPass=true, memoryPass=true. Consistent main regressions: none.
+- enabled: mainMeanPass=true, multifixturePass=true, compact64Pass=true, mainRegressionPass=true, suppRegressionPass=true, memoryPass=true. Consistent main regressions: none.
+
+Independent confirmation was declared BEFORE screen outcome: six NEW balanced R1/D/R2
+blocks,1260rows72thermal0 batches, same frozen binaries/settings, not pooled with screen.
+Stricter each-main-scene median<=1.03/each-supplement<=1.10, same main/dense-target gates.
+Result **PHONE_CONFIRMATION_FAIL**.
+
+| Confirmation main step | Baseline | NEON |
+|---|---:|---:|
+| D/R geometric | -2.45% | -1.92% |
+| D/R summed | -7.44% | -7.32% |
+| AA geometric | -0.02% | 0.14% |
+| AA summed | 0.03% | 0.20% |
+- Confirmation stock median regression SlowExplosion: 3.32%.
+- Confirmation enabled median regression SlowExplosion: 3.04%.
+
+Separate instrumented C/D states match ordinary captures; candidate/narrow calls,node visits,
+pruning,owner updates and plain/owned query counts match. Eligibility lookups:
+- Diagonal/stock: 3142595->100212 (96.81% fewer).
+- Diagonal/enabled: 3170159->100182 (96.84% fewer).
+- SlowExplosion/stock: 1217121->88668 (92.71% fewer).
+- SlowExplosion/enabled: 1217121->88668 (92.71% fewer).
+- Multifixture/stock: 7154304->236567 (96.69% fewer).
+- Multifixture/enabled: 7566165->242245 (96.80% fewer).
+
+Counts are not PMU/wall-time attribution. **11x26 CTests=286 pass**,
+including nativeAVX2/sanitizers/custom timestamps and Android baseline/actualNEON.
+New differential old-code oracle runs in8owner suites (5D/3C), explicitly SKIPs3pruning-OFF
+controls: stableNULL/nonNULL keys,mutablegenericeligibility,3->1safecachedlookup fixture,
+linkedhintinit/propagation/reset/nonemptyrejection,nestedpublicqueries,callbackorder/IDs
+through3cachedpairpasses. Strong owner model retained;30additionalseededmodels+90fresh
+physics/identity/edge processes pass. 3072+108 repeat comparisons,
+4608 finite main records,0main/0supp captured trajectories changed.
+Not formal all-state/cross-platform bitwise proof. 210 heap lifecycles balance,
+12 instrumented states match ordinary; worst D requested peak0.01%
+(+48B). NotRSS/libc/allocator/stack.
+
+R production/C previous-convergence token controls,harness identity,source/reference-header
+freshness,frozen hashes,patch reconstruction and independent gates audited. Dedicated
+Android still has frequency/background variation despite thermal0. Native builds only
+validate correctness, not desktop performance. No Wasm/Pymunk qualification or engine
+merge approval is implied. Workspace evidence exports/munk2d-owner-query-fastpath:
+PLAN/CONFIRMATION-PLAN/REPORT/REPRODUCE,patch/snapshots,raw timings/states/telemetry,fulltests/
+oracles/models,work/memory,summaries/gates/audits,ELFs/disassembly and checksummed archive.
+Body-centric issue32 remains separately unimplemented.
+
+Confirmation target details (baseline/NEON):
+- Multifixture: -46.96%/-46.37%.
+- Compact64: -34.00%/-33.74%.
+- Diagonal: 1.38%/1.30%.
+- SlowExplosion: 3.32%/3.04%.
+
+Confirmation paused on a failed zero-thermal precheck BEFORE a new solver block; no
+timing batch was started. Exact failing status is unknown (original runner did not
+persist that response). Recovery telemetry verified status0, then resumed same campaign
+without discarding/repeating any measured row; all27 prior batches retained. No power/
+clock/root/thermal settings changed. Pause/recovery disclosed in companion evidence.
+
+
+## Lazy owner-metadata activation (2026-11-19)
+
+**Screen passes but independent confirmation fails; no production recommendation.** Base dce736c/production engine2006f7b. R=production;D=previous
+owner-pruning+convergence+query fastpath;E=D+lazy activation. New option OFF by
+default and requires all3 prior options. No engine/default/Pymunk merge or PGO,
+precision/iterations/contact-quality/thread changes. Generic private trees stay
+eager unless explicitly opted in; cpSpace defers on empty linked roots.
+
+Dormant mutation does full BB/topology work, skips owner propagation/recomputation
+and NULL-initializes new internal owner slots. First real owned query rebuilds BOTH
+linked roots before metadata consumption/publishing active. Parent-pointer iterative
+postorder:O(n)time/O(1)storage,no recursion/allocation. Sticky activation,no membership
+counters/deactivation/scene thresholds. Empty reconfiguration resets eager; generic
+mutable eligibility refresh and unpruned public queries preserved. Node72/Pair56
+unchanged; extra bool may fit prior tree padding. Not zero overhead: validity checks
+and NULL initialization remain. Once enabled, upkeep continues even if compounds
+are later removed. One-time O(n) first-use latency is explicitly charged/disclosed.
+
+S22 CPU4mask10 NDKr27d arm64API28 O3gLTO,baseline+actual packetNEON. Three balanced
+R1/D/E/R2blocks,26main9supp,840rows48successfulthermal0 batches,1warmup/sample/batch;
+vs sqrt(R1*R2). All outliers retained. Each contrast own median3ratios,not products.
+
+| Main RUN contrast | Baseline geometric | NEON geometric | Baseline summed | NEON summed |
+|---|---:|---:|---:|---:|
+| D/R | -2.00% | -1.99% | -7.14% | -7.44% |
+| E/R | -2.43% | -1.98% | -7.40% | -7.36% |
+| E/D | -0.36% | 0.12% | -0.29% | 0.08% |
+| AA | -0.07% | -0.00% | -0.21% | 0.08% |
+
+| Screen main E/R phase | Baseline geometric | NEON geometric |
+|---|---:|---:|
+| init_time | -2.03% | 1.14% |
+| run_time | -2.43% | -1.98% |
+| destroy_time | 4.19% | 0.50% |
+| total_time | -2.33% | -1.92% |
+
+| Screen E/R RUN | Baseline | NEON |
+|---|---:|---:|
+| Multifixture | -46.67% | -46.15% |
+| Compact64 | -34.23% | -33.95% |
+| Diagonal | -1.18% | 2.85% |
+| SlowExplosion | 1.96% | 2.89% |
+| AddPair | 0.09% | 0.89% |
+| FallingCircles | 0.06% | 0.73% |
+| Sparse64 | 1.29% | 0.57% |
+
+Predeclared screen BOTH:mainRUNgeo<=.995/Multi<=.70/Compact64<=.80/no mainRUN>3%ALL3/
+no suppRUN>10%ALL3/no mainTOTAL>5%ALL3/peak<=5%/allquality. No postmeasurement tuning.
+- stock: mainMeanPass=true, multifixturePass=true, compact64Pass=true, mainRegressionPass=true, suppRegressionPass=true, totalRegressionPass=true, memoryPass=true.
+- enabled: mainMeanPass=true, multifixturePass=true, compact64Pass=true, mainRegressionPass=true, suppRegressionPass=true, totalRegressionPass=true, memoryPass=true.
+
+Independent confirmation predeclared BEFORE screen outcome:6freshR1/E/R2blocks,
+1260rows72thermal0successbatches,same frozen binaries/settings,not pooled with screen.
+Stricter EACHmainRUNmedian<=1.03/supp<=1.10/mainTOTAL<=1.05 +same suite/dense targets.
+Result **PHONE_CONFIRMATION_FAIL**.
+
+| Confirmed main phase | Baseline geometric | NEON geometric | Baseline summed | NEON summed |
+|---|---:|---:|---:|---:|
+| run_time E/R | -2.35% | -1.71% | -7.49% | -7.22% |
+| run_time AA | -0.33% | 0.17% | -0.25% | 0.02% |
+| total_time E/R | -2.26% | -1.65% | -7.41% | -7.15% |
+| total_time AA | -0.31% | 0.14% | -0.25% | 0.02% |
+
+| Confirmed E/R RUN | Baseline | NEON |
+|---|---:|---:|
+| Multifixture | -47.08% | -46.08% |
+| Compact64 | -34.15% | -33.94% |
+| Diagonal | 0.05% | 3.33% |
+| SlowExplosion | 1.74% | 3.55% |
+- Confirmation enabled regression Diagonal: 3.33%.
+- Confirmation enabled regression SlowExplosion: 3.55%.
+- Confirmation enabled regression RotaryLimitConstraints: 3.19%.
+
+Separate counters/states: unchanged collision/narrow/mark visits/prunes/query lookups/
+plain-owned query counts; only metadata/bootstrap counters differ. Mark visits do NOT
+include separately counted bootstrap. Metadata recomputations/activation/nodes:
+- Diagonal/stock: 300125->0,activations0,rebuilt internal nodes0.
+- Diagonal/enabled: 300035->0,activations0,rebuilt internal nodes0.
+- SlowExplosion/stock: 265001->0,activations0,rebuilt internal nodes0.
+- SlowExplosion/enabled: 265001->0,activations0,rebuilt internal nodes0.
+- Multifixture/stock: 720372->720371,activations1,rebuilt internal nodes3.
+- Multifixture/enabled: 736410->736409,activations1,rebuilt internal nodes3.
+
+Counters not wall-time/PMU attribution. Separate structural late-first-use probe
+(allocation hooks deny activation allocations),not full physics or worst-case timing;
+no prevalidation cache-warming/forced eviction. Three fresh samples,median values:
+
+| Leaves/mode | Setup ms | Activation ms | Teardown ms | Total ms |
+|---|---:|---:|---:|---:|
+| 1000/D | 0.1329 | 0.0006 | 0.0177 | 0.1512 |
+| 1000/E | 0.2706 | 0.0181 | 0.0252 | 0.3123 |
+| 10000/D | 1.1882 | 0.0009 | 0.0711 | 1.2602 |
+| 10000/E | 0.9221 | 0.1925 | 0.0575 | 1.1721 |
+
+All **11x27=297 final CTest cases pass** (nativeR/D/EAVX2,Esanitizers/
+uint64timestamps,6Android baseline/actualNEON). Newlazy test5Eexecutes/6OFFSKIP;
+96objects,64dormant/32active topology/pool/optimize/transfers,mutable-firsteligible
+callback,linked metadata+BB invariants,nestedqueries/IDs,empty/config/leafreuse,
+8192deep linked activation under allocation denial. Priorquery test8executes/3skip;
+strongowner model/physicsretained.90freshphysics/identity/edge+30seededmodelsPASS;
+3072+108exactrepeat/rolling comparisons,4608finite records;0main/0suppcaptured changes.
+Not formal all-state/cross-platform proof.210heaplifecyclesbalance/12stateconfigs
+match;worstErequestedpeak0.01%(+48B),notRSS/libc/stack/allocator/Python.
+R/DCPP/harness controls,source/header/oraclefreshness,hashes,patchreconstruction,
+all gate/thermal/row/probe audits pass.
+
+Every thermal failure is persisted before natural cooldown/recheck; all measured
+rows retained,no power/root/clocks changed. Dedicated Android still has variable
+frequency/background work. Hosttests onlycorrectness; no x86/Wasmperformance or
+Pymunk/mergequalification implied. Workspace exports/munk2d-owner-lazy-activation
+containsPLAN/REPORT/REPRODUCE,patch/snapshots,rawtests/oracles/timings/telemetry,
+work/memory/late-probes,all phase summaries/gates/audits,ELFs+disassembly/archive.
+Issue32 remains separately unimplemented.
+
+Confirmation recorded 5 thermal-status1 prechecks in 3 batches, natural30s waits only. No timed row dropped/repeated.
+- main-2-stock-R1.csv: 1 waits; beforepairedblock.
+- main-3-enabled-R2.csv: 2 waits; WITHINpairedblock,addsuncertainty.
+- main-5-enabled-R1.csv: 2 waits; beforepairedblock.
+All successful batches started at status0; no fixed-clock claim, all AA/ratios retained.
